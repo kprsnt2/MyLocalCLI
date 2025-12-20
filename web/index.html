@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyLocalCLI - Your Own AI Coding Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --primary: #7C3AED;
+      --primary-dark: #5B21B6;
+      --secondary: #06B6D4;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --error: #EF4444;
+      --bg-dark: #0F0F1A;
+      --bg-card: #1A1A2E;
+      --bg-input: #252540;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --border: #2D2D44;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .new-chat-btn {
+      width: 100%;
+      margin-top: 15px;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .new-chat-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(124, 58, 237, 0.4);
+    }
+
+    .conversations {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .conversation-item {
+      padding: 12px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 5px;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .conversation-item:hover {
+      background: var(--bg-input);
+    }
+
+    .conversation-title {
+      flex: 1;
+      font-size: 0.9rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-footer {
+      padding: 15px;
+      border-top: 1px solid var(--border);
+    }
+
+    .provider-select,
+    .model-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .chat-header {
+      padding: 15px 25px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .model-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--bg-input);
+      border-radius: 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.error {
+      background: var(--error);
+      animation: none;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 25px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .message {
+      display: flex;
+      gap: 15px;
+      max-width: 85%;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .message.user .avatar {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+    }
+
+    .message.assistant .avatar {
+      background: linear-gradient(135deg, var(--success), #059669);
+    }
+
+    .message-content {
+      padding: 15px 18px;
+      border-radius: 15px;
+      line-height: 1.6;
+    }
+
+    .message.user .message-content {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-bottom-right-radius: 5px;
+    }
+
+    .message.assistant .message-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 5px;
+    }
+
+    .message-content pre {
+      background: var(--bg-dark);
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+
+    .message-content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+    }
+
+    .message-content p {
+      margin-bottom: 10px;
+    }
+
+    .message-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 5px;
+      padding: 15px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      width: fit-content;
+    }
+
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-indicator span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+
+      0%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+
+      50% {
+        transform: translateY(-5px);
+        opacity: 1;
+      }
+    }
+
+    .input-area {
+      padding: 20px 25px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+    }
+
+    .input-container {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    #message-input {
+      width: 100%;
+      padding: 15px 50px 15px 18px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+      resize: none;
+      min-height: 52px;
+      max-height: 150px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    #message-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+    }
+
+    #message-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .voice-btn {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .voice-btn:hover {
+      color: var(--primary);
+    }
+
+    .voice-btn.recording {
+      color: var(--error);
+      animation: pulse 1s infinite;
+    }
+
+    .send-btn {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 5px 20px rgba(124, 58, 237, 0.4);
+    }
+
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 25px;
+      width: 90%;
+      max-width: 500px;
+      border: 1px solid var(--border);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .save-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .error-banner {
+      background: var(--error);
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        z-index: 50;
+        transition: left 0.3s;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"><span>⚡</span><span>MyLocalCLI</span></div>
+      <button class="new-chat-btn" onclick="newChat()"><span>+</span> New Chat</button>
+    </div>
+    <div class="conversations" id="conversations"></div>
+    <div class="sidebar-footer">
+      <select class="provider-select" id="provider-select" onchange="changeProvider(this.value)">
+        <option value="lmstudio">🏠 LM Studio</option>
+        <option value="ollama">🦙 Ollama</option>
+        <option value="openrouter">🌐 OpenRouter</option>
+        <option value="openai">🔑 OpenAI</option>
+        <option value="groq">⚡ Groq</option>
+      </select>
+      <select class="model-select" id="model-select" onchange="changeModel(this.value)">
+        <option value="">Select Model...</option>
+      </select>
+      <button class="new-chat-btn" style="background: var(--bg-input);" onclick="openSettings()">⚙️ Settings</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="error-banner" class="error-banner" style="display: none;"></div>
+    <header class="chat-header">
+      <h2 id="chat-title">New Chat</h2>
+      <div class="model-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="model-name">Not connected</span>
+      </div>
+    </header>
+
+    <div class="messages" id="messages">
+      <div class="message assistant">
+        <div class="avatar">🤖</div>
+        <div class="message-content">
+          <p>Hello! I'm MyLocalCLI, your AI coding assistant.</p>
+          <p><strong>Setup:</strong> Click Settings (⚙️), enter your LM Studio endpoint (default:
+            http://localhost:1234/v1), and save.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-container">
+        <div class="input-wrapper">
+          <textarea id="message-input" placeholder="Type your message... (Enter to send)" rows="1"
+            onkeydown="handleKeyDown(event)"></textarea>
+          <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">🎤</button>
+        </div>
+        <button class="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Settings</h3>
+        <button class="close-btn" onclick="closeSettings()">&times;</button>
+      </div>
+      <div class="form-group">
+        <label>API Endpoint</label>
+        <input type="text" id="settings-endpoint" placeholder="http://localhost:1234/v1">
+      </div>
+      <div class="form-group">
+        <label>API Key (for cloud providers)</label>
+        <input type="password" id="settings-apikey" placeholder="Enter API key">
+      </div>
+      <div class="form-group">
+        <label>Model Name</label>
+        <input type="text" id="settings-model" placeholder="Will auto-detect from server">
+      </div>
+      <button class="save-btn" onclick="saveSettings()">Save & Connect</button>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let currentProvider = localStorage.getItem('provider') || 'lmstudio';
+    let currentModel = localStorage.getItem(`${currentProvider}_model`) || '';
+    let apiEndpoint = localStorage.getItem(`${currentProvider}_endpoint`) || 'http://localhost:1234/v1';
+    let apiKey = localStorage.getItem(`${currentProvider}_apikey`) || '';
+    let conversationHistory = [];
+    let isRecording = false;
+    let recognition = null;
+
+    // Provider configs
+    const PROVIDERS = {
+      lmstudio: { endpoint: 'http://localhost:1234/v1', model: '', local: true },
+      ollama: { endpoint: 'http://localhost:11434', model: 'llama3.2', local: true, useOllama: true },
+      openrouter: { endpoint: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free' },
+      openai: { endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+      groq: { endpoint: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' }
+    };
+
+    // Proxy URL helper - routes through our server to avoid CORS
+    function proxyUrl(url) {
+      return '/proxy/' + btoa(url);
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      loadSettings();
+      document.getElementById('provider-select').value = currentProvider;
+      loadConversations();
+      setupVoice();
+      await testConnection();
+      await loadModels();
+    });
+
+    function loadSettings() {
+      currentProvider = localStorage.getItem('provider') || 'lmstudio';
+      apiEndpoint = localStorage.getItem(`${currentProvider}_endpoint`) || PROVIDERS[currentProvider].endpoint;
+      apiKey = localStorage.getItem(`${currentProvider}_apikey`) || '';
+      currentModel = localStorage.getItem(`${currentProvider}_model`) || PROVIDERS[currentProvider].model;
+    }
+
+    // Test connection
+    async function testConnection() {
+      const dot = document.getElementById('status-dot');
+      const modelEl = document.getElementById('model-name');
+
+      try {
+        const provider = PROVIDERS[currentProvider];
+        let url = provider.useOllama
+          ? `${apiEndpoint}/api/tags`
+          : `${apiEndpoint}/models`;
+
+        // Use proxy for local providers to avoid CORS
+        if (provider.local) {
+          url = proxyUrl(url);
+        }
+
+        const headers = {};
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
+
+        if (res.ok) {
+          dot.classList.remove('error');
+          modelEl.textContent = currentModel || 'Connected';
+          hideError();
+          return true;
+        }
+      } catch (e) {
+        console.error('Connection test failed:', e);
+      }
+
+      dot.classList.add('error');
+      modelEl.textContent = 'Not connected';
+      showError('Cannot connect. Check Settings and ensure LM Studio is running.');
+      return false;
+    }
+
+    // Load models
+    async function loadModels() {
+      const select = document.getElementById('model-select');
+      select.innerHTML = '<option value="">Loading...</option>';
+
+      try {
+        const provider = PROVIDERS[currentProvider];
+        let models = [];
+
+        if (provider.useOllama) {
+          const url = provider.local ? proxyUrl(`${apiEndpoint}/api/tags`) : `${apiEndpoint}/api/tags`;
+          const res = await fetch(url);
+          const data = await res.json();
+          models = data.models?.map(m => ({ id: m.name, name: m.name })) || [];
+        } else {
+          let url = `${apiEndpoint}/models`;
+          if (provider.local) url = proxyUrl(url);
+
+          const headers = {};
+          if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+          const res = await fetch(url, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            models = data.data?.map(m => ({ id: m.id, name: m.id })) || [];
+          }
+        }
+
+        // Fallback models
+        if (models.length === 0) {
+          if (currentProvider === 'openrouter') {
+            models = [
+              { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)' },
+              { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)' }
+            ];
+          } else if (currentProvider === 'openai') {
+            models = [{ id: 'gpt-4o-mini', name: 'GPT-4o Mini' }];
+          } else if (currentProvider === 'groq') {
+            models = [{ id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' }];
+          }
+        }
+
+        select.innerHTML = '<option value="">Select Model...</option>';
+        models.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.name;
+          if (m.id === currentModel) opt.selected = true;
+          select.appendChild(opt);
+        });
+
+        if (!currentModel && models.length > 0) {
+          currentModel = models[0].id;
+          select.value = currentModel;
+          saveModel();
+        }
+      } catch (e) {
+        select.innerHTML = '<option value="">Failed to load</option>';
+      }
+    }
+
+    // Send message
+    async function sendMessage() {
+      const input = document.getElementById('message-input');
+      const msg = input.value.trim();
+      if (!msg || !currentModel) {
+        if (!currentModel) showError('Please select a model first');
+        return;
+      }
+
+      addMessage(msg, 'user');
+      input.value = '';
+      conversationHistory.push({ role: 'user', content: msg });
+      showTyping();
+
+      try {
+        const response = await callAPI();
+        hideTyping();
+        addMessage(response, 'assistant');
+        conversationHistory.push({ role: 'assistant', content: response });
+        saveConversation();
+        hideError();
+      } catch (e) {
+        hideTyping();
+        showError(e.message);
+        addMessage('Error: ' + e.message, 'assistant');
+      }
+    }
+
+    // Call API
+    async function callAPI() {
+      const provider = PROVIDERS[currentProvider];
+      const messages = [
+        { role: 'system', content: 'You are MyLocalCLI, a helpful AI coding assistant. Be concise.' },
+        ...conversationHistory
+      ];
+
+      let url, body;
+
+      if (provider.useOllama) {
+        url = `${apiEndpoint}/api/chat`;
+        body = { model: currentModel, messages, stream: false };
+      } else {
+        url = `${apiEndpoint}/chat/completions`;
+        body = { model: currentModel, messages, temperature: 0.7, max_tokens: 4096 };
+      }
+
+      // Use proxy for local
+      if (provider.local) url = proxyUrl(url);
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+      if (currentProvider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://localcoder.dev';
+        headers['X-Title'] = 'MyLocalCLI';
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Error ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (provider.useOllama) {
+        return data.message?.content || 'No response';
+      } else {
+        return data.choices?.[0]?.message?.content || 'No response';
+      }
+    }
+
+    // UI helpers
+    function addMessage(content, role) {
+      const el = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.innerHTML = `
+        <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+        <div class="message-content">${formatMsg(content)}</div>
+      `;
+      el.appendChild(div);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function formatMsg(text) {
+      return text
+        .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function showTyping() {
+      const el = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'message assistant';
+      div.id = 'typing';
+      div.innerHTML = '<div class="avatar">🤖</div><div class="typing-indicator"><span></span><span></span><span></span></div>';
+      el.appendChild(div);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function hideTyping() { document.getElementById('typing')?.remove(); }
+    function showError(msg) { const b = document.getElementById('error-banner'); b.textContent = msg; b.style.display = 'block'; }
+    function hideError() { document.getElementById('error-banner').style.display = 'none'; }
+    function handleKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+
+    // Provider/model changes
+    async function changeProvider(p) {
+      currentProvider = p;
+      localStorage.setItem('provider', p);
+      loadSettings();
+      await testConnection();
+      await loadModels();
+    }
+
+    function changeModel(m) {
+      currentModel = m;
+      saveModel();
+      document.getElementById('model-name').textContent = m || 'No model';
+    }
+
+    function saveModel() {
+      localStorage.setItem(`${currentProvider}_model`, currentModel);
+      localStorage.setItem('model', currentModel);
+    }
+
+    // Chat management
+    function newChat() {
+      conversationHistory = [];
+      document.getElementById('messages').innerHTML = '<div class="message assistant"><div class="avatar">🤖</div><div class="message-content"><p>Hello! How can I help you?</p></div></div>';
+      document.getElementById('chat-title').textContent = 'New Chat';
+    }
+
+    function loadConversations() {
+      const convs = JSON.parse(localStorage.getItem('conversations') || '[]');
+      document.getElementById('conversations').innerHTML = convs.map(c =>
+        `<div class="conversation-item" onclick="loadConv('${c.id}')"><span>💬</span><span class="conversation-title">${c.name}</span></div>`
+      ).join('');
+    }
+
+    function saveConversation() {
+      if (conversationHistory.length < 2) return;
+      const convs = JSON.parse(localStorage.getItem('conversations') || '[]');
+      convs.unshift({ id: Date.now(), name: conversationHistory[0].content.slice(0, 25) + '...', messages: conversationHistory });
+      if (convs.length > 15) convs.pop();
+      localStorage.setItem('conversations', JSON.stringify(convs));
+      loadConversations();
+    }
+
+    function loadConv(id) {
+      const convs = JSON.parse(localStorage.getItem('conversations') || '[]');
+      const c = convs.find(x => x.id == id);
+      if (c) {
+        conversationHistory = c.messages;
+        document.getElementById('messages').innerHTML = '';
+        c.messages.forEach(m => addMessage(m.content, m.role));
+      }
+    }
+
+    // Settings modal
+    function openSettings() {
+      document.getElementById('settings-modal').classList.add('active');
+      document.getElementById('settings-endpoint').value = apiEndpoint;
+      document.getElementById('settings-apikey').value = apiKey;
+      document.getElementById('settings-model').value = currentModel;
+    }
+
+    function closeSettings() { document.getElementById('settings-modal').classList.remove('active'); }
+
+    async function saveSettings() {
+      apiEndpoint = document.getElementById('settings-endpoint').value || PROVIDERS[currentProvider].endpoint;
+      apiKey = document.getElementById('settings-apikey').value;
+      const m = document.getElementById('settings-model').value;
+      if (m) currentModel = m;
+
+      localStorage.setItem(`${currentProvider}_endpoint`, apiEndpoint);
+      localStorage.setItem(`${currentProvider}_apikey`, apiKey);
+      if (currentModel) localStorage.setItem(`${currentProvider}_model`, currentModel);
+
+      closeSettings();
+      await testConnection();
+      await loadModels();
+    }
+
+    // Voice
+    function setupVoice() {
+      if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.onresult = e => {
+          let t = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) t += e.results[i][0].transcript;
+          document.getElementById('message-input').value = t;
+        };
+      }
+    }
+
+    function toggleVoice() {
+      if (!recognition) return alert('Voice not supported');
+      const btn = document.getElementById('voice-btn');
+      if (isRecording) {
+        recognition.stop();
+        btn.classList.remove('recording');
+        btn.textContent = '🎤';
+      } else {
+        recognition.start();
+        btn.classList.add('recording');
+        btn.textContent = '⏹️';
+      }
+      isRecording = !isRecording;
+    }
+  </script>
+</body>
+
+</html>
