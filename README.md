@@ -4,7 +4,7 @@
 
 A Claude Code alternative that works with **local LLMs** and free cloud APIs.
 
-![MyLocalCLI](https://img.shields.io/badge/MyLocalCLI-v2.0.0-purple)
+![npm](https://img.shields.io/npm/v/mylocalcli)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
@@ -18,45 +18,42 @@ A Claude Code alternative that works with **local LLMs** and free cloud APIs.
 
 ## 🚀 Installation
 
-### Option 1: From GitHub (Recommended)
+### Install from npm (Recommended)
 
 ```bash
-# Clone the repository
+npm install -g mylocalcli
+```
+
+That's it! Now run:
+
+```bash
+mylocalcli init    # Setup wizard
+mylocalcli         # Start chatting
+```
+
+### Alternative: Install from GitHub
+
+```bash
+# Clone and install
 git clone https://github.com/kprsnt2/MyLocalCLI.git
 cd MyLocalCLI
-
-# Install dependencies
 npm install
-
-# Make it globally available
 npm link
-
-# Now you can use it from anywhere!
-mylocalcli
 ```
 
-### Option 2: Direct npm install from GitHub
+### Alternative: Run without installing
 
 ```bash
-npm install -g github:kprsnt2/MyLocalCLI
-```
-
-### Option 3: Run without installing
-
-```bash
-git clone https://github.com/kprsnt2/MyLocalCLI.git
-cd MyLocalCLI
-npm install
-node src/index.js
+npx mylocalcli
 ```
 
 ## 🎯 Quick Start
 
 ```bash
-# Setup wizard (first time)
+# First time setup
 mylocalcli init
 
-# Start chatting (CLI)
+# Start CLI chat
 mylocalcli
 
 # Start Web UI
@@ -78,19 +75,19 @@ mylocalcli web
 
 The AI can use these tools automatically:
 
-**File Operations:** `read_file`, `write_file`, `edit_file`, `append_file`, `insert_at_line`, `read_lines`, `delete_file`, `move_file`, `copy_file`, `file_info`
+**File:** `read_file` `write_file` `edit_file` `append_file` `insert_at_line` `read_lines` `delete_file` `move_file` `copy_file` `file_info`
 
-**Directory:** `list_directory`, `create_directory`, `tree`
+**Directory:** `list_directory` `create_directory` `tree`
 
-**Search:** `search_files`, `grep`, `find_replace`
+**Search:** `search_files` `grep` `find_replace`
 
 **Commands:** `run_command`
 
-**Git:** `git_status`, `git_diff`, `git_log`, `git_commit`
+**Git:** `git_status` `git_diff` `git_log` `git_commit`
 
 **Web:** `web_fetch`
 
-## 📖 CLI Commands
+## 📖 Commands
 
 ```bash
 mylocalcli              # Start chat
@@ -99,82 +96,39 @@ mylocalcli config       # View/edit config
 mylocalcli models       # List models
 mylocalcli providers    # List providers
 mylocalcli history      # Manage conversations
-mylocalcli web          # Start web UI
+mylocalcli web          # Start web UI (localhost:3456)
 ```
 
 ### Chat Commands
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show help |
-| `/tools` | List available tools |
-| `/clear` | Clear conversation |
-| `/history` | List saved chats |
-| `/exit` | Exit |
+`/help` `/tools` `/clear` `/history` `/exit`
 
-## 🦙 Using with Ollama
+## 🦙 Ollama Setup
 
 ```bash
-# Install Ollama (https://ollama.ai)
 ollama pull llama3.2
 ollama serve
-
-# Configure MyLocalCLI
-mylocalcli init
-# Select "Ollama"
+mylocalcli init  # Select Ollama
 ```
 
-## 🏠 Using with LM Studio
+## 🏠 LM Studio Setup
 
 1. Download [LM Studio](https://lmstudio.ai)
-2. Load a model (e.g., Llama 3, CodeLlama)
-3. Click "Start Server" (port 1234)
-4. Run `mylocalcli init` → Select "LM Studio"
+2. Load a model → Start Server (port 1234)
+3. Run `mylocalcli init` → Select LM Studio
 
 ## 🌐 Web UI
 
 ```bash
 mylocalcli web
-# Opens http://localhost:3456
 ```
 
-Features:
-- 🎨 Dark theme
-- 🎤 Voice input (Chrome/Edge)
-- 💬 Conversation history
-- ⚙️ Provider switching
-
-## 📁 Project Structure
-
-```
-MyLocalCLI/
-├── package.json
-├── src/
-│   ├── index.js         # CLI entry
-│   ├── config/          # Settings
-│   ├── core/            # Chat, tools
-│   ├── providers/       # LLM providers
-│   ├── ui/              # Terminal UI
-│   └── utils/           # Utilities
-└── web/
-    └── index.html       # Web UI
-```
-
-## 🔧 Configuration
-
-Config stored in: `~/.config/mylocalcli/`
-
-Environment variables:
-- `OPENAI_API_KEY`
-- `OPENROUTER_API_KEY`
-- `GROQ_API_KEY`
+Features: Dark theme, voice input, conversation history
 
 ## 📄 License
 
-MIT License - Use it, modify it, make it yours!
+MIT - Use it, modify it, make it yours!
 
 ---
 
-**Made with ❤️ for developers who want AI coding without the cloud**
-
-⭐ Star this repo if you find it useful!
+⭐ **Star this repo if you find it useful!**
