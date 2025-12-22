@@ -1,18 +1,21 @@
 {
   "name": "mylocalcli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Your Own AI Coding Assistant - Private, Local, Yours",
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "mylocalcli": "./src/index.js",
-    "mlc": "./src/index.js"
+    "mylocalcli": "src/index.js",
+    "mlc": "src/index.js"
   },
+  "files": [
+    "src",
+    "web"
+  ],
   "scripts": {
     "start": "node src/index.js",
     "dev": "node src/index.js",
-    "web": "node src/index.js web",
-    "link": "npm link"
+    "web": "node src/index.js web"
   },
   "keywords": [
     "cli",
@@ -24,24 +27,32 @@
     "lmstudio",
     "ollama",
     "openai",
+    "groq",
     "llm",
-    "self-hosted"
+    "self-hosted",
+    "claude-code",
+    "copilot"
   ],
-  "author": "MyLocalCLI",
+  "author": "kprsnt2",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kprsnt2/MyLocalCLI.git"
+  },
+  "homepage": "https://github.com/kprsnt2/MyLocalCLI",
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "boxen": "^7.1.1",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "conf": "^12.0.0",
+    "figures": "^6.0.1",
     "glob": "^10.3.10",
     "inquirer": "^9.2.12",
     "marked": "^11.1.1",
     "marked-terminal": "^6.2.0",
-    "ora": "^8.0.1",
-    "boxen": "^7.1.1",
-    "figures": "^6.0.1"
+    "ora": "^8.0.1"
   }
 }
