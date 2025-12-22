@@ -28,8 +28,8 @@ export class OpenRouterProvider extends BaseProvider {
         const headers = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://localcoder.dev',
-            'X-Title': 'LocalCoder CLI'
+            'HTTP-Referer': 'https://mylocalcli.dev',
+            'X-Title': 'MyLocalCLI'
         };
 
         const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -59,8 +59,8 @@ export class OpenRouterProvider extends BaseProvider {
         const headers = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://localcoder.dev',
-            'X-Title': 'LocalCoder CLI'
+            'HTTP-Referer': 'https://mylocalcli.dev',
+            'X-Title': 'MyLocalCLI'
         };
 
         const response = await fetch(`${this.baseUrl}/chat/completions`, {

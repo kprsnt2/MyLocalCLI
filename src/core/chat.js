@@ -79,7 +79,7 @@ export async function startChat(options = {}) {
         const isRunning = await provider.isServerRunning();
         if (!isRunning) {
             printError('LM Studio server is not running. Start LM Studio and load a model first.');
-            printInfo('Or switch to another provider: localcoder config --provider ollama');
+            printInfo('Or switch to another provider: mylocalcli config --provider ollama');
             return;
         }
         printSuccess('Connected to LM Studio');
@@ -87,10 +87,37 @@ export async function startChat(options = {}) {
         const isRunning = await provider.isServerRunning();
         if (!isRunning) {
             printError('Ollama is not running. Start Ollama first with: ollama serve');
-            printInfo('Or switch to OpenRouter: localcoder config --provider openrouter');
+            printInfo('Or switch to OpenRouter: mylocalcli config --provider openrouter');
             return;
         }
         printSuccess('Connected to Ollama');
+    } else if (providerName === 'openrouter') {
+        const apiKey = getApiKey('openrouter');
+        if (!apiKey) {
+            printError('OpenRouter API key not set!');
+            printInfo('Get your free key at: https://openrouter.ai/keys');
+            printInfo('Then run: mylocalcli config --key YOUR_API_KEY');
+            return;
+        }
+        printSuccess('Using OpenRouter');
+    } else if (providerName === 'openai') {
+        const apiKey = getApiKey('openai');
+        if (!apiKey) {
+            printError('OpenAI API key not set!');
+            printInfo('Get your key at: https://platform.openai.com/api-keys');
+            printInfo('Then run: mylocalcli config --key YOUR_API_KEY');
+            return;
+        }
+        printSuccess('Using OpenAI');
+    } else if (providerName === 'groq') {
+        const apiKey = getApiKey('groq');
+        if (!apiKey) {
+            printError('Groq API key not set!');
+            printInfo('Get your key at: https://console.groq.com/keys');
+            printInfo('Then run: mylocalcli config --key YOUR_API_KEY');
+            return;
+        }
+        printSuccess('Using Groq');
     }
 
     // Conversation history
@@ -163,50 +190,29 @@ You can help with coding tasks, explain code, debug issues, and more.`;
             if (enableTools) {
                 systemContent += `
 
-You have access to these tools. To use a tool, respond with a JSON code block:
+You have access to tools. To use a tool, respond with EXACTLY this JSON format:
 \`\`\`json
 {
-  "tool": "tool_name",
+  "tool": "EXACT_TOOL_NAME",
   "arguments": { ... }
 }
 \`\`\`
 
-Available tools:
-FILE OPERATIONS:
-- read_file: Read file contents. Args: { "path": "file" }
-- write_file: Write/create file. Args: { "path": "file", "content": "..." }
-- edit_file: Edit part of file. Args: { "path": "file", "old_content": "...", "new_content": "..." }
-- append_file: Append to file. Args: { "path": "file", "content": "..." }
-- insert_at_line: Insert at line. Args: { "path": "file", "line": 10, "content": "..." }
-- read_lines: Read specific lines. Args: { "path": "file", "start": 1, "end": 50 }
-- delete_file: Delete file/folder. Args: { "path": "file" }
-- move_file: Move/rename. Args: { "source": "old", "destination": "new" }
-- copy_file: Copy file. Args: { "source": "src", "destination": "dest" }
-- file_info: Get file info. Args: { "path": "file" }
+IMPORTANT: Use ONLY these exact tool names (no variations):
 
-DIRECTORY:
-- list_directory: List contents. Args: { "path": "dir", "recursive": false }
-- create_directory: Create folder. Args: { "path": "dir" }
-- tree: Show tree structure. Args: { "path": ".", "depth": 3 }
+FILE: write_file, read_file, edit_file, append_file, delete_file, copy_file, move_file, file_info, read_lines, insert_at_line
+DIR: list_directory, create_directory, tree
+SEARCH: search_files, grep, find_replace
+CMD: run_command
+GIT: git_status, git_diff, git_log, git_commit
+WEB: web_fetch
 
-SEARCH:
-- search_files: Find files by pattern. Args: { "pattern": "*.js" }
-- grep: Search in files. Args: { "pattern": "text", "path": ".", "include": "*.js" }
-- find_replace: Find/replace in files. Args: { "find": "old", "replace": "new", "include": "*.js" }
+Examples:
+- To create a file: { "tool": "write_file", "arguments": { "path": "index.html", "content": "..." } }
+- To run npm: { "tool": "run_command", "arguments": { "command": "npm install" } }
+- To list files: { "tool": "list_directory", "arguments": { "path": "." } }
 
-COMMANDS:
-- run_command: Execute shell command. Args: { "command": "npm test" }
-
-GIT:
-- git_status: Get status. Args: {}
-- git_diff: Show diff. Args: { "staged": false }
-- git_log: Show commits. Args: { "count": 10 }
-- git_commit: Commit changes. Args: { "message": "..." }
-
-WEB:
-- web_fetch: Fetch URL content. Args: { "url": "https://..." }
-
-After using a tool, I'll show you the result and you can continue.`;
+After I execute the tool, continue with your next step.`;
             }
 
             if (context.relevantFiles && context.relevantFiles.length > 0) {
