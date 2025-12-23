@@ -6,19 +6,24 @@ export class OpenRouterProvider extends BaseProvider {
         super({
             baseUrl: 'https://openrouter.ai/api/v1',
             apiKey: config.apiKey || process.env.OPENROUTER_API_KEY || '',
-            model: config.model || 'meta-llama/llama-3.3-70b-instruct:free',
+            model: config.model || 'deepseek/deepseek-r1:free',
             ...config
         });
 
         this.freeModels = [
-            { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', provider: 'Meta' },
-            { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)', provider: 'Google' },
-            { id: 'microsoft/phi-3-mini-128k-instruct:free', name: 'Phi-3 Mini (Free)', provider: 'Microsoft' },
-            { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)', provider: 'Mistral' },
-            { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Free)', provider: 'Alibaba' },
-            { id: 'huggingfaceh4/zephyr-7b-beta:free', name: 'Zephyr 7B (Free)', provider: 'HuggingFace' },
-            { id: 'openchat/openchat-7b:free', name: 'OpenChat 7B (Free)', provider: 'OpenChat' },
-            { id: 'nousresearch/nous-capybara-7b:free', name: 'Nous Capybara 7B (Free)', provider: 'Nous' }
+            // Top Tier - Best for coding with tools
+            { id: 'deepseek/deepseek-r1:free', name: '🔥 DeepSeek R1 671B (Free)', provider: 'DeepSeek' },
+            { id: 'deepseek/deepseek-chat-v3-0324:free', name: '💬 DeepSeek Chat V3 (Free)', provider: 'DeepSeek' },
+            { id: 'qwen/qwen3-coder-480b-a35b:free', name: '💻 Qwen3 Coder 480B (Free)', provider: 'Alibaba' },
+            { id: 'meta-llama/llama-4-maverick:free', name: '🦙 Llama 4 Maverick (Free)', provider: 'Meta' },
+            { id: 'meta-llama/llama-4-scout:free', name: '🦙 Llama 4 Scout (Free)', provider: 'Meta' },
+            { id: 'meta-llama/llama-3.3-70b-instruct:free', name: '🦙 Llama 3.3 70B (Free)', provider: 'Meta' },
+            // Good alternatives
+            { id: 'nvidia/llama-3.1-nemotron-nano-8b-v1:free', name: '⚡ Nemotron Nano 8B (Free)', provider: 'NVIDIA' },
+            { id: 'google/gemma-2-9b-it:free', name: '💎 Gemma 2 9B (Free)', provider: 'Google' },
+            { id: 'qwen/qwen2.5-vl-3b-instruct:free', name: '👁️ Qwen 2.5 VL 3B (Free)', provider: 'Alibaba' },
+            { id: 'microsoft/phi-3-mini-128k-instruct:free', name: '🔬 Phi-3 Mini 128K (Free)', provider: 'Microsoft' },
+            { id: 'mistralai/mistral-7b-instruct:free', name: '🌬️ Mistral 7B (Free)', provider: 'Mistral' }
         ];
     }
 

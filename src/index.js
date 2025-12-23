@@ -45,12 +45,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Read version from package.json
+const packageJson = JSON.parse(await fs.readFile(path.join(__dirname, '..', 'package.json'), 'utf-8'));
+
 const program = new Command();
 
 program
     .name('mylocalcli')
     .description('Your Own AI Coding Assistant - Private, Local, Yours')
-    .version('2.0.0');
+    .version(packageJson.version);
 
 // Default command - start chat
 program
@@ -82,210 +85,227 @@ program
         printLogo();
         console.log(chalk.hex('#7C3AED')('Welcome to MyLocalCLI Setup!\n'));
 
-        // Select provider
-        const { provider } = await inquirer.prompt([{
-            type: 'list',
-            name: 'provider',
-            message: 'Select your AI provider:',
-            choices: [
-                { name: '🏠 LM Studio (Local LLM)', value: 'lmstudio' },
-                { name: '🦙 Ollama (Local LLM)', value: 'ollama' },
-                { name: '🌐 OpenRouter (Free models available)', value: 'openrouter' },
-                { name: '🔑 OpenAI API', value: 'openai' },
-                { name: '⚡ Groq (Ultra-fast)', value: 'groq' },
-                { name: '⚙️  Custom OpenAI-compatible endpoint', value: 'custom' }
-            ]
-        }]);
+        // Longer delay to ensure terminal is ready (fixes blank screen issue on some terminals)
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        setProvider(provider);
-
-        // Provider-specific setup
-        if (provider === 'lmstudio') {
-            const { endpoint } = await inquirer.prompt([{
-                type: 'input',
-                name: 'endpoint',
-                message: 'LM Studio endpoint:',
-                default: 'http://localhost:1234/v1'
-            }]);
-
-            setCustomEndpoint('lmstudio', endpoint);
-
-            // Test connection
-            const spinner = createSpinner('Testing connection to LM Studio...');
-            spinner.start();
-
-            const lmProvider = new LMStudioProvider({ baseUrl: endpoint });
-            const isRunning = await lmProvider.isServerRunning();
-
-            if (isRunning) {
-                spinner.succeed('Connected to LM Studio!');
-
-                // Fetch available models
-                const models = await lmProvider.listModels();
-                if (models.length > 0) {
-                    const { model } = await inquirer.prompt([{
-                        type: 'list',
-                        name: 'model',
-                        message: 'Select a model:',
-                        choices: models.map(m => ({ name: m.name, value: m.id }))
-                    }]);
-                    setModel('lmstudio', model);
-                }
-            } else {
-                spinner.warn('LM Studio is not running. Start it and load a model before using MyLocalCLI.');
-            }
-
-        } else if (provider === 'ollama') {
-            const { endpoint } = await inquirer.prompt([{
-                type: 'input',
-                name: 'endpoint',
-                message: 'Ollama endpoint:',
-                default: 'http://localhost:11434'
-            }]);
-
-            setCustomEndpoint('ollama', endpoint);
-
-            // Test connection
-            const spinner = createSpinner('Testing connection to Ollama...');
-            spinner.start();
-
-            const ollamaProvider = new OllamaProvider({ baseUrl: endpoint });
-            const isRunning = await ollamaProvider.isServerRunning();
-
-            if (isRunning) {
-                spinner.succeed('Connected to Ollama!');
-
-                // Fetch available models
-                const models = await ollamaProvider.listModels();
-                if (models.length > 0) {
-                    const { model } = await inquirer.prompt([{
-                        type: 'list',
-                        name: 'model',
-                        message: 'Select a model:',
-                        choices: models.map(m => ({ name: `${m.name}`, value: m.id }))
-                    }]);
-                    setModel('ollama', model);
-                } else {
-                    console.log(chalk.yellow('\nNo models found. Pull a model first:'));
-                    console.log(chalk.gray('  ollama pull llama3.2\n'));
-                }
-            } else {
-                spinner.warn('Ollama is not running. Start it with: ollama serve');
-            }
-
-        } else if (provider === 'openrouter') {
-            console.log(chalk.gray('\nGet your free API key at: https://openrouter.ai/keys\n'));
-
-            const { apiKey } = await inquirer.prompt([{
-                type: 'password',
-                name: 'apiKey',
-                message: 'OpenRouter API key (press Enter to skip for now):',
-                mask: '*'
-            }]);
-
-            if (apiKey) {
-                setApiKey('openrouter', apiKey);
-            }
-
-            // Select model
-            const orProvider = new OpenRouterProvider({});
-            const models = orProvider.getFreeModels();
-
-            const { model } = await inquirer.prompt([{
-                type: 'list',
-                name: 'model',
-                message: 'Select a free model:',
-                choices: models.map(m => ({ name: m.name, value: m.id }))
-            }]);
-
-            setModel('openrouter', model);
-
-        } else if (provider === 'openai') {
-            console.log(chalk.gray('\nGet your API key at: https://platform.openai.com/api-keys\n'));
-
-            const { apiKey } = await inquirer.prompt([{
-                type: 'password',
-                name: 'apiKey',
-                message: 'OpenAI API key:',
-                mask: '*'
-            }]);
-
-            if (apiKey) {
-                setApiKey('openai', apiKey);
-            }
-
-            const { model } = await inquirer.prompt([{
-                type: 'list',
-                name: 'model',
-                message: 'Select a model:',
+        try {
+            // Select provider - using rawlist for numbered options (more compatible)
+            const { provider } = await inquirer.prompt([{
+                type: 'rawlist',
+                name: 'provider',
+                message: 'Select your AI provider (enter number):',
                 choices: [
-                    { name: 'GPT-4o Mini (Recommended)', value: 'gpt-4o-mini' },
-                    { name: 'GPT-4o', value: 'gpt-4o' },
-                    { name: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
-                    { name: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' }
+                    { name: 'LM Studio (Local LLM)', value: 'lmstudio' },
+                    { name: 'Ollama (Local LLM)', value: 'ollama' },
+                    { name: 'OpenRouter (Free models available)', value: 'openrouter' },
+                    { name: 'OpenAI API', value: 'openai' },
+                    { name: 'Groq (Ultra-fast)', value: 'groq' },
+                    { name: 'Custom OpenAI-compatible endpoint', value: 'custom' }
                 ]
             }]);
 
-            setModel('openai', model);
-
-        } else if (provider === 'groq') {
-            console.log(chalk.gray('\nGet your API key at: https://console.groq.com/keys\n'));
-
-            const { apiKey } = await inquirer.prompt([{
-                type: 'password',
-                name: 'apiKey',
-                message: 'Groq API key:',
-                mask: '*'
-            }]);
-
-            if (apiKey) {
-                setApiKey('groq', apiKey);
+            // Validate provider was selected
+            if (!provider) {
+                printWarning('No provider selected. Run `mylocalcli init` again to set up.');
+                return;
             }
 
-            const { model } = await inquirer.prompt([{
-                type: 'list',
-                name: 'model',
-                message: 'Select a model:',
-                choices: [
-                    { name: 'Llama 3.3 70B (Recommended)', value: 'llama-3.3-70b-versatile' },
-                    { name: 'Llama 3.1 70B', value: 'llama-3.1-70b-versatile' },
-                    { name: 'Mixtral 8x7B', value: 'mixtral-8x7b-32768' },
-                    { name: 'Gemma 2 9B', value: 'gemma2-9b-it' }
-                ]
-            }]);
+            setProvider(provider);
 
-            setModel('groq', model);
-
-        } else if (provider === 'custom') {
-            const { endpoint, apiKey, model } = await inquirer.prompt([
-                {
+            // Provider-specific setup
+            if (provider === 'lmstudio') {
+                const { endpoint } = await inquirer.prompt([{
                     type: 'input',
                     name: 'endpoint',
-                    message: 'API endpoint URL:',
-                    validate: (input) => input.startsWith('http') ? true : 'Please enter a valid URL'
-                },
-                {
+                    message: 'LM Studio endpoint:',
+                    default: 'http://localhost:1234/v1'
+                }]);
+
+                setCustomEndpoint('lmstudio', endpoint);
+
+                // Test connection
+                const spinner = createSpinner('Testing connection to LM Studio...');
+                spinner.start();
+
+                const lmProvider = new LMStudioProvider({ baseUrl: endpoint });
+                const isRunning = await lmProvider.isServerRunning();
+
+                if (isRunning) {
+                    spinner.succeed('Connected to LM Studio!');
+
+                    // Fetch available models
+                    const models = await lmProvider.listModels();
+                    if (models.length > 0) {
+                        const { model } = await inquirer.prompt([{
+                            type: 'list',
+                            name: 'model',
+                            message: 'Select a model:',
+                            choices: models.map(m => ({ name: m.name, value: m.id }))
+                        }]);
+                        setModel('lmstudio', model);
+                    }
+                } else {
+                    spinner.warn('LM Studio is not running. Start it and load a model before using MyLocalCLI.');
+                }
+
+            } else if (provider === 'ollama') {
+                const { endpoint } = await inquirer.prompt([{
+                    type: 'input',
+                    name: 'endpoint',
+                    message: 'Ollama endpoint:',
+                    default: 'http://localhost:11434'
+                }]);
+
+                setCustomEndpoint('ollama', endpoint);
+
+                // Test connection
+                const spinner = createSpinner('Testing connection to Ollama...');
+                spinner.start();
+
+                const ollamaProvider = new OllamaProvider({ baseUrl: endpoint });
+                const isRunning = await ollamaProvider.isServerRunning();
+
+                if (isRunning) {
+                    spinner.succeed('Connected to Ollama!');
+
+                    // Fetch available models
+                    const models = await ollamaProvider.listModels();
+                    if (models.length > 0) {
+                        const { model } = await inquirer.prompt([{
+                            type: 'list',
+                            name: 'model',
+                            message: 'Select a model:',
+                            choices: models.map(m => ({ name: `${m.name}`, value: m.id }))
+                        }]);
+                        setModel('ollama', model);
+                    } else {
+                        console.log(chalk.yellow('\nNo models found. Pull a model first:'));
+                        console.log(chalk.gray('  ollama pull llama3.2\n'));
+                    }
+                } else {
+                    spinner.warn('Ollama is not running. Start it with: ollama serve');
+                }
+
+            } else if (provider === 'openrouter') {
+                console.log(chalk.gray('\nGet your free API key at: https://openrouter.ai/keys\n'));
+
+                const { apiKey } = await inquirer.prompt([{
                     type: 'password',
                     name: 'apiKey',
-                    message: 'API key (if required):',
+                    message: 'OpenRouter API key (press Enter to skip for now):',
                     mask: '*'
-                },
-                {
-                    type: 'input',
-                    name: 'model',
-                    message: 'Model name:',
-                    default: 'default'
+                }]);
+
+                if (apiKey) {
+                    setApiKey('openrouter', apiKey);
                 }
-            ]);
 
-            setCustomEndpoint('custom', endpoint);
-            if (apiKey) setApiKey('custom', apiKey);
-            setModel('custom', model);
+                // Select model
+                const orProvider = new OpenRouterProvider({});
+                const models = orProvider.getFreeModels();
+
+                const { model } = await inquirer.prompt([{
+                    type: 'list',
+                    name: 'model',
+                    message: 'Select a free model:',
+                    choices: models.map(m => ({ name: m.name, value: m.id }))
+                }]);
+
+                setModel('openrouter', model);
+
+            } else if (provider === 'openai') {
+                console.log(chalk.gray('\nGet your API key at: https://platform.openai.com/api-keys\n'));
+
+                const { apiKey } = await inquirer.prompt([{
+                    type: 'password',
+                    name: 'apiKey',
+                    message: 'OpenAI API key:',
+                    mask: '*'
+                }]);
+
+                if (apiKey) {
+                    setApiKey('openai', apiKey);
+                }
+
+                const { model } = await inquirer.prompt([{
+                    type: 'list',
+                    name: 'model',
+                    message: 'Select a model:',
+                    choices: [
+                        { name: 'GPT-4o Mini (Recommended)', value: 'gpt-4o-mini' },
+                        { name: 'GPT-4o', value: 'gpt-4o' },
+                        { name: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
+                        { name: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' }
+                    ]
+                }]);
+
+                setModel('openai', model);
+
+            } else if (provider === 'groq') {
+                console.log(chalk.gray('\nGet your API key at: https://console.groq.com/keys\n'));
+
+                const { apiKey } = await inquirer.prompt([{
+                    type: 'password',
+                    name: 'apiKey',
+                    message: 'Groq API key:',
+                    mask: '*'
+                }]);
+
+                if (apiKey) {
+                    setApiKey('groq', apiKey);
+                }
+
+                const { model } = await inquirer.prompt([{
+                    type: 'list',
+                    name: 'model',
+                    message: 'Select a model:',
+                    choices: [
+                        { name: 'Llama 3.3 70B (Recommended)', value: 'llama-3.3-70b-versatile' },
+                        { name: 'Llama 3.1 70B', value: 'llama-3.1-70b-versatile' },
+                        { name: 'Mixtral 8x7B', value: 'mixtral-8x7b-32768' },
+                        { name: 'Gemma 2 9B', value: 'gemma2-9b-it' }
+                    ]
+                }]);
+
+                setModel('groq', model);
+
+            } else if (provider === 'custom') {
+                const { endpoint, apiKey, model } = await inquirer.prompt([
+                    {
+                        type: 'input',
+                        name: 'endpoint',
+                        message: 'API endpoint URL:',
+                        validate: (input) => input.startsWith('http') ? true : 'Please enter a valid URL'
+                    },
+                    {
+                        type: 'password',
+                        name: 'apiKey',
+                        message: 'API key (if required):',
+                        mask: '*'
+                    },
+                    {
+                        type: 'input',
+                        name: 'model',
+                        message: 'Model name:',
+                        default: 'default'
+                    }
+                ]);
+
+                setCustomEndpoint('custom', endpoint);
+                if (apiKey) setApiKey('custom', apiKey);
+                setModel('custom', model);
+            }
+
+            console.log();
+            printSuccess('Setup complete! Run `mylocalcli` to start chatting.');
+            console.log();
+        } catch (error) {
+            if (error.name === 'ExitPromptError') {
+                console.log('\nSetup cancelled.');
+            } else {
+                printError(`Setup failed: ${error.message}`);
+            }
         }
-
-        console.log();
-        printSuccess('Setup complete! Run `mylocalcli` to start chatting.');
-        console.log();
     });
 
 // Config command

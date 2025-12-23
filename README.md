@@ -2,7 +2,7 @@
 
 **Your Own AI Coding Assistant - Private, Local, Yours**
 
-A Claude Code alternative that works with **local LLMs** and free cloud APIs.
+A Claude Code alternative that works with **local LLMs** and free cloud APIs. Now with **agents, skills, project config, and 26 tools**!
 
 ![npm](https://img.shields.io/npm/v/mylocalcli)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)
@@ -11,116 +11,142 @@ A Claude Code alternative that works with **local LLMs** and free cloud APIs.
 ## ✨ Features
 
 - 🏠 **6 AI Providers** - LM Studio, Ollama, OpenRouter, OpenAI, Groq, Custom
-- 🛠️ **22 Tools** - File ops, search, git, web fetch (Claude Code style)
+- 🛠️ **26 Tools** - File ops, search, git, web fetch, todos, multi-edit
+- 🤖 **5 Agents** - Code reviewer, explorer, test generator, refactorer, doc writer
+- 🎓 **6 Skills** - Auto-injected best practices for JS, Python, React, etc.
+- 📋 **15 Commands** - Slash commands like Claude Code
+- 📝 **Project Config** - MYLOCALCLI.md for project-specific instructions
 - 🌐 **Web UI** - Beautiful dark theme with voice input
-- 💬 **Conversations** - Save, load, export chat history
 - 🔒 **Private** - Runs locally, your data stays yours
 
 ## 🚀 Installation
-
-### Install from npm (Recommended)
 
 ```bash
 npm install -g mylocalcli
 ```
 
-That's it! Now run:
+Now run (both commands work):
 
 ```bash
-mylocalcli init    # Setup wizard
-mylocalcli         # Start chatting
-```
-
-### Alternative: Install from GitHub
-
-```bash
-# Clone and install
-git clone https://github.com/kprsnt2/MyLocalCLI.git
-cd MyLocalCLI
-npm install
-npm link
-```
-
-### Alternative: Run without installing
-
-```bash
-npx mylocalcli
+mlc init          # or: mylocalcli init
+mlc               # or: mylocalcli
 ```
 
 ## 🎯 Quick Start
 
 ```bash
-# First time setup
-mylocalcli init
-
-# Start CLI chat
-mylocalcli
-
-# Start Web UI
-mylocalcli web
+mlc init          # Setup wizard
+mlc               # Start chatting
+mlc web           # Start Web UI
 ```
 
-## 🤖 Supported Providers
+## 📖 Slash Commands (15)
 
-| Provider | Type | Description | Free? |
-|----------|------|-------------|-------|
-| 🏠 LM Studio | Local | Run any GGUF model | ✅ |
-| 🦙 Ollama | Local | Easy local LLM | ✅ |
-| 🌐 OpenRouter | Cloud | Free tier available | ✅ |
-| 🔑 OpenAI | Cloud | GPT-4o, etc. | ❌ |
-| ⚡ Groq | Cloud | Ultra-fast | ✅ |
-| ⚙️ Custom | Any | Any OpenAI-compatible API | - |
+```
+/help         - Show all commands
+/tools        - List 26 available tools
+/agents       - List 5 specialized agents
+/skills       - List 6 auto-injecting skills
+/init-config  - Create MYLOCALCLI.md project config
+/providers    - List AI providers
+/models       - List available models
+/history      - View saved conversations
+/clear        - Clear conversation
+/exit         - Exit the chat
+```
 
-## 🛠️ Available Tools (22)
+## 📝 Project Configuration
 
-The AI can use these tools automatically:
+Create a `MYLOCALCLI.md` file in your project root to give the AI project-specific instructions:
 
-**File:** `read_file` `write_file` `edit_file` `append_file` `insert_at_line` `read_lines` `delete_file` `move_file` `copy_file` `file_info`
+```bash
+mlc
+> /init-config
+```
 
-**Directory:** `list_directory` `create_directory` `tree`
+Or manually create `MYLOCALCLI.md`:
 
-**Search:** `search_files` `grep` `find_replace`
+```markdown
+---
+name: My Project
+description: A Node.js API server
+---
 
-**Commands:** `run_command`
+# Project Instructions
+
+- Use TypeScript for all new files
+- Follow REST API conventions
+- Write tests for all endpoints
+```
+
+The AI will automatically follow these instructions!
+
+## 🤖 Agents System
+
+5 built-in specialized agents:
+
+| Agent | Description |
+|-------|-------------|
+| `code-reviewer` | Reviews code for bugs, security |
+| `code-explorer` | Deep codebase analysis |
+| `test-generator` | Generates unit tests |
+| `refactorer` | Suggests refactoring improvements |
+| `doc-writer` | Generates documentation |
+
+Usage: `/agent code-reviewer Review my authentication code`
+
+## 🎓 Skills (Auto-Inject)
+
+Skills automatically inject relevant best practices based on your project:
+
+| Skill | Triggers On |
+|-------|-------------|
+| JavaScript | `*.js`, `*.ts`, `*.jsx`, `*.tsx` |
+| Python | `*.py` |
+| React | `*.jsx`, `*.tsx` |
+| Node.js | `package.json`, `server.js` |
+| Git | `.git/`, `CONTRIBUTING.md` |
+| Testing | `*.test.js`, `*.spec.ts` |
+
+## 🛠️ Tools (26)
+
+**File:** `read_file` `write_file` `edit_file` `multi_edit_file` `delete_file` `copy_file` `move_file` `file_info`
+
+**Search:** `search_files` `grep` `find_replace` `codebase_search`
 
 **Git:** `git_status` `git_diff` `git_log` `git_commit`
 
-**Web:** `web_fetch`
+**Other:** `run_command` `web_fetch` `todo_write` `ask_user`
 
-## 📖 Commands
+## 🤖 Supported Providers
 
-```bash
-mylocalcli              # Start chat
-mylocalcli init         # Setup wizard
-mylocalcli config       # View/edit config
-mylocalcli models       # List models
-mylocalcli providers    # List providers
-mylocalcli history      # Manage conversations
-mylocalcli web          # Start web UI (localhost:3456)
-```
-
-### Chat Commands
-
-`/help` `/tools` `/clear` `/history` `/exit`
+| Provider | Type | Free? |
+|----------|------|-------|
+| 🏠 LM Studio | Local | ✅ |
+| 🦙 Ollama | Local | ✅ |
+| 🌐 OpenRouter | Cloud | ✅ |
+| ⚡ Groq | Cloud | ✅ |
+| 🔑 OpenAI | Cloud | ❌ |
+| ⚙️ Custom | Any | - |
 
 ## 🦙 Ollama Setup
 
 ```bash
 ollama pull llama3.2
 ollama serve
-mylocalcli init  # Select Ollama
+mlc init  # Select Ollama
 ```
 
 ## 🏠 LM Studio Setup
 
 1. Download [LM Studio](https://lmstudio.ai)
 2. Load a model → Start Server (port 1234)
-3. Run `mylocalcli init` → Select LM Studio
+3. Run `mlc init` → Select LM Studio
 
 ## 🌐 Web UI
 
 ```bash
-mylocalcli web
+mlc web
 ```
 
 Features: Dark theme, voice input, conversation history

@@ -5,8 +5,11 @@ import { OpenAIProvider } from '../providers/openai.js';
 import { OpenRouterProvider } from '../providers/openrouter.js';
 import { getProvider, getApiKey, getModel, getBaseUrl } from '../config/settings.js';
 import { PROVIDERS } from '../config/providers.js';
+import { loadProjectConfig, formatProjectConfigForPrompt } from '../config/project.js';
 import { getRelevantContext, formatContextForPrompt } from './context.js';
 import { TOOLS, executeTool, parseToolCalls } from './tools.js';
+import { executeCommand, loadCustomCommands } from './commands.js';
+import { loadSkills, getSkillContext, findMatchingSkills } from '../skills/skill.js';
 import {
     generateSessionId,
     saveMessage,
@@ -146,6 +149,9 @@ export async function startChat(options = {}) {
         printInfo('Tool calling enabled. I can read/write files and run commands.');
     }
 
+    // Load custom commands from user directories
+    await loadCustomCommands(cwd);
+
     // Main loop
     while (true) {
         try {
@@ -160,25 +166,54 @@ export async function startChat(options = {}) {
 
             if (!trimmedInput) continue;
 
-            // Handle commands
+            // Handle slash commands using the new command system
             if (trimmedInput.startsWith('/')) {
-                const handled = await handleCommand(trimmedInput, {
+                const commandCtx = {
                     providerName,
                     provider,
                     messages,
                     cwd,
-                    sessionId
-                });
-                if (handled === 'exit') break;
-                continue;
-            }
+                    sessionId,
+                    model: getModel(providerName),
+                    PROVIDERS,
+                    printProvidersList,
+                    printModelsList,
+                    listConversations,
+                    loadConversation,
+                    renameConversation,
+                    exportConversation
+                };
 
-            // Save user message
-            messages.push({ role: 'user', content: trimmedInput });
-            await saveMessage(sessionId, { role: 'user', content: trimmedInput });
+                const { handled, exit, result } = await executeCommand(trimmedInput, commandCtx);
+
+                if (exit) break;
+
+                // Handle injected prompts from custom commands
+                if (result && result.type === 'inject') {
+                    // Treat the command prompt as a user message to the AI
+                    const commandPrompt = result.prompt;
+                    messages.push({ role: 'user', content: commandPrompt });
+                    await saveMessage(sessionId, { role: 'user', content: commandPrompt });
+                    // Don't continue - let it fall through to send to AI
+                } else {
+                    continue;
+                }
+            } else {
+                // Regular user message
+                messages.push({ role: 'user', content: trimmedInput });
+                await saveMessage(sessionId, { role: 'user', content: trimmedInput });
+            }
 
             // Get context
             const context = await getRelevantContext(cwd, trimmedInput);
+
+            // Load project configuration (MYLOCALCLI.md)
+            const projectConfig = await loadProjectConfig(cwd);
+
+            // Load skills and get relevant skill context based on project files
+            await loadSkills(cwd);
+            const projectFiles = context.relevantFiles?.map(f => f.path) || [];
+            const skillContext = getSkillContext(projectFiles);
 
             // Build system message with tools info
             let systemContent = `You are MyLocalCLI, a powerful AI coding assistant.
@@ -187,32 +222,114 @@ Project type: ${context.projectType || 'unknown'}
 
 You can help with coding tasks, explain code, debug issues, and more.`;
 
+            // Inject project configuration if available
+            if (projectConfig) {
+                systemContent += formatProjectConfigForPrompt(projectConfig);
+            }
+
+            // Inject relevant skills based on project context
+            if (skillContext) {
+                systemContent += '\n\n' + skillContext;
+            }
+
             if (enableTools) {
                 systemContent += `
 
-You have access to tools. To use a tool, respond with EXACTLY this JSON format:
+## TOOL USAGE INSTRUCTIONS
+
+You have access to tools to interact with files, run commands, and more.
+
+**TO USE A TOOL, YOU MUST OUTPUT THIS EXACT FORMAT:**
+
 \`\`\`json
 {
-  "tool": "EXACT_TOOL_NAME",
-  "arguments": { ... }
+  "tool": "TOOL_NAME",
+  "arguments": {
+    "argument_name": "value"
+  }
 }
 \`\`\`
 
-IMPORTANT: Use ONLY these exact tool names (no variations):
+**CRITICAL RULES:**
+1. Output the JSON inside a code block with \`\`\`json
+2. Use ONLY the exact tool names listed below
+3. Wait for my response after each tool call before continuing
+4. Do NOT add any text inside the JSON code block - only the JSON object
 
-FILE: write_file, read_file, edit_file, append_file, delete_file, copy_file, move_file, file_info, read_lines, insert_at_line
-DIR: list_directory, create_directory, tree
-SEARCH: search_files, grep, find_replace
-CMD: run_command
-GIT: git_status, git_diff, git_log, git_commit
-WEB: web_fetch
+## AVAILABLE TOOLS (26)
 
-Examples:
-- To create a file: { "tool": "write_file", "arguments": { "path": "index.html", "content": "..." } }
-- To run npm: { "tool": "run_command", "arguments": { "command": "npm install" } }
-- To list files: { "tool": "list_directory", "arguments": { "path": "." } }
+FILE TOOLS:
+- write_file(path, content) - Create or overwrite a file
+- read_file(path) - Read file contents
+- edit_file(path, old_content, new_content) - Replace text in file
+- multi_edit_file(path, edits[]) - Multiple replacements at once
+- append_file(path, content) - Add content to end of file
+- delete_file(path) - Delete a file
+- copy_file(source, destination) - Copy file
+- move_file(source, destination) - Move/rename file
+- file_info(path) - Get file metadata
+- read_lines(path, start, end) - Read specific line range
+- insert_at_line(path, line, content) - Insert at line number
 
-After I execute the tool, continue with your next step.`;
+DIRECTORY TOOLS:
+- list_directory(path) - List files and folders
+- create_directory(path) - Create directory
+- tree(path, depth) - Show directory tree
+
+SEARCH TOOLS:
+- search_files(pattern) - Find files by glob pattern
+- grep(pattern, path, include) - Search text in files
+- find_replace(find, replace, path) - Find and replace text
+- codebase_search(query) - Semantic code search
+
+COMMAND TOOLS:
+- run_command(command) - Execute shell command
+
+GIT TOOLS:
+- git_status() - Get git status
+- git_diff(staged) - Get git diff
+- git_log(count) - Show commit history
+- git_commit(message) - Create commit
+
+OTHER TOOLS:
+- web_fetch(url) - Fetch URL content
+- todo_write(todos[]) - Manage task list
+- ask_user(question, options) - Ask user a question
+
+## EXAMPLES
+
+To create an HTML file:
+\`\`\`json
+{
+  "tool": "write_file",
+  "arguments": {
+    "path": "index.html",
+    "content": "<!DOCTYPE html>\\n<html>\\n<head><title>Hello</title></head>\\n<body><h1>Hello World</h1></body>\\n</html>"
+  }
+}
+\`\`\`
+
+To list directory:
+\`\`\`json
+{
+  "tool": "list_directory",
+  "arguments": {
+    "path": "."
+  }
+}
+\`\`\`
+
+To run a command:
+\`\`\`json
+{
+  "tool": "run_command",
+  "arguments": {
+    "command": "npm install"
+  }
+}
+\`\`\`
+
+After I execute the tool, I will tell you the result. Then continue with your next step.`;
             }
 
             if (context.relevantFiles && context.relevantFiles.length > 0) {
@@ -284,131 +401,6 @@ After I execute the tool, continue with your next step.`;
     }
 
     console.log('\n' + colors.muted('Goodbye! 👋\n'));
-}
-
-async function handleCommand(input, ctx) {
-    const [command, ...args] = input.slice(1).split(' ');
-
-    switch (command.toLowerCase()) {
-        case 'exit':
-        case 'quit':
-        case 'q':
-            return 'exit';
-
-        case 'help':
-        case 'h':
-            printHelp();
-            printInfo('\nAdditional commands:');
-            printInfo('  /history    - List saved conversations');
-            printInfo('  /load <id>  - Load a conversation');
-            printInfo('  /save <name>- Rename current conversation');
-            printInfo('  /export     - Export conversation as markdown');
-            printInfo('  /tools      - Toggle tool calling');
-            break;
-
-        case 'clear':
-            ctx.messages.length = 0;
-            printSuccess('Conversation cleared');
-            break;
-
-        case 'config':
-            printInfo(`Provider: ${ctx.providerName}`);
-            printInfo(`Model: ${getModel(ctx.providerName)}`);
-            printInfo(`Working Directory: ${ctx.cwd}`);
-            break;
-
-        case 'provider':
-        case 'providers':
-            printProvidersList(PROVIDERS, ctx.providerName);
-            break;
-
-        case 'models':
-            const models = await ctx.provider.listModels();
-            printModelsList(models);
-            break;
-
-        case 'model':
-            if (args[0]) {
-                printInfo(`Model set to: ${args[0]}`);
-            } else {
-                printInfo(`Current model: ${getModel(ctx.providerName)}`);
-            }
-            break;
-
-        case 'history':
-            const conversations = await listConversations();
-            if (conversations.length === 0) {
-                printInfo('No saved conversations');
-            } else {
-                console.log('\n' + colors.primary('Saved Conversations:') + '\n');
-                for (const conv of conversations.slice(0, 10)) {
-                    console.log(`  ${colors.muted(conv.id.slice(0, 15))}  ${conv.name}  ${colors.muted(`(${conv.messageCount} msgs)`)}`);
-                }
-                console.log();
-            }
-            break;
-
-        case 'load':
-            if (args[0]) {
-                const conv = await loadConversation(args[0]);
-                if (conv) {
-                    ctx.messages.length = 0;
-                    ctx.messages.push(...conv.messages);
-                    printSuccess(`Loaded: ${conv.name}`);
-                } else {
-                    printError('Conversation not found');
-                }
-            } else {
-                printInfo('Usage: /load <conversation-id>');
-            }
-            break;
-
-        case 'save':
-        case 'rename':
-            if (args.length > 0) {
-                const name = args.join(' ');
-                await renameConversation(ctx.sessionId, name);
-                printSuccess(`Conversation renamed to: ${name}`);
-            } else {
-                printInfo('Usage: /save <name>');
-            }
-            break;
-
-        case 'export':
-            const md = await exportConversation(ctx.sessionId);
-            if (md) {
-                const filename = `conversation_${Date.now()}.md`;
-                await fs.writeFile(path.join(ctx.cwd, filename), md);
-                printSuccess(`Exported to: ${filename}`);
-            } else {
-                printError('Nothing to export');
-            }
-            break;
-
-        case 'tools':
-            console.log('\n' + colors.primary('Available Tools:') + '\n');
-            console.log(colors.secondary('  FILE OPERATIONS:'));
-            console.log('    read_file, write_file, edit_file, append_file');
-            console.log('    insert_at_line, read_lines, delete_file, move_file, copy_file, file_info');
-            console.log(colors.secondary('\n  DIRECTORY:'));
-            console.log('    list_directory, create_directory, tree');
-            console.log(colors.secondary('\n  SEARCH:'));
-            console.log('    search_files, grep, find_replace');
-            console.log(colors.secondary('\n  COMMANDS:'));
-            console.log('    run_command');
-            console.log(colors.secondary('\n  GIT:'));
-            console.log('    git_status, git_diff, git_log, git_commit');
-            console.log(colors.secondary('\n  WEB:'));
-            console.log('    web_fetch');
-            console.log('\n' + colors.muted('  22 tools total. The AI will use them automatically.') + '\n');
-            break;
-
-        default:
-            printError(`Unknown command: ${command}`);
-            printInfo('Type /help for available commands');
-    }
-
-    return null;
 }
 
 export default { startChat, createProvider };

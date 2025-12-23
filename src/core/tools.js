@@ -328,6 +328,95 @@ export const TOOLS = [
                 required: ['url']
             }
         }
+    },
+    // NEW CLAUDE CODE-STYLE TOOLS
+    {
+        type: 'function',
+        function: {
+            name: 'todo_write',
+            description: 'Create or update a todo list to track tasks. Use this to maintain a persistent task list.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    todos: {
+                        type: 'array',
+                        description: 'Array of todo items',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                id: { type: 'string', description: 'Unique ID for the todo' },
+                                content: { type: 'string', description: 'Todo description' },
+                                status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: 'Todo status' },
+                                priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Priority level' }
+                            },
+                            required: ['id', 'content', 'status']
+                        }
+                    }
+                },
+                required: ['todos']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'multi_edit_file',
+            description: 'Make multiple edits to a file in a single operation. More efficient than multiple edit_file calls.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Path to the file' },
+                    edits: {
+                        type: 'array',
+                        description: 'Array of edit operations',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                old_content: { type: 'string', description: 'Content to find' },
+                                new_content: { type: 'string', description: 'Content to replace with' }
+                            },
+                            required: ['old_content', 'new_content']
+                        }
+                    }
+                },
+                required: ['path', 'edits']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'codebase_search',
+            description: 'Search the codebase for code snippets matching a query. Uses fuzzy/semantic matching.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query (function names, concepts, etc.)' },
+                    file_pattern: { type: 'string', description: 'File pattern to search (e.g., "*.js")' },
+                    max_results: { type: 'number', description: 'Maximum results to return (default: 10)' }
+                },
+                required: ['query']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'ask_user',
+            description: 'Ask the user a question and wait for their response. Use for clarification or decisions.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    question: { type: 'string', description: 'Question to ask the user' },
+                    options: {
+                        type: 'array',
+                        description: 'Optional list of choices for the user',
+                        items: { type: 'string' }
+                    }
+                },
+                required: ['question']
+            }
+        }
     }
 ];
 
@@ -350,13 +439,13 @@ export async function executeTool(toolName, args, cwd, options = {}) {
         case 'write_file': {
             const filePath = resolvePath(args.path);
             const existing = await readFile(filePath);
+            const lineCount = args.content.split(/\r?\n/).length;
 
-            if (showDiff && existing.success) {
-                console.log('\n' + colors.warning('📝 Modify:') + ` ${args.path}`);
-                printCode(generateDiff(existing.content, args.content), 'diff');
-            } else if (showDiff) {
-                console.log('\n' + colors.success('📄 Create:') + ` ${args.path}`);
-                printCode(args.content.slice(0, 500) + (args.content.length > 500 ? '\n...' : ''), 'text');
+            // Show concise progress instead of code content
+            if (existing.success) {
+                console.log(colors.warning(`📝 Modifying: ${args.path} (${lineCount} lines)...`));
+            } else {
+                console.log(colors.success(`📄 Creating: ${args.path} (${lineCount} lines)...`));
             }
 
             if (!autoApprove) {
@@ -373,29 +462,130 @@ export async function executeTool(toolName, args, cwd, options = {}) {
         }
 
         case 'edit_file': {
+            // Validate required arguments
+            if (!args.path) {
+                return { success: false, error: 'Missing required argument: path' };
+            }
+            if (args.old_content === undefined || args.old_content === null) {
+                return { success: false, error: 'Missing required argument: old_content' };
+            }
+            if (args.new_content === undefined || args.new_content === null) {
+                return { success: false, error: 'Missing required argument: new_content' };
+            }
+
             const filePath = resolvePath(args.path);
             const existing = await readFile(filePath);
             if (!existing.success) return { success: false, error: `File not found: ${args.path}` };
-            if (!existing.content.includes(args.old_content)) {
-                return { success: false, error: 'Content not found in file' };
+
+            let content = existing.content;
+            let oldContent = String(args.old_content);
+            let newContentArg = String(args.new_content);
+
+            // Detect and preserve original line endings
+            const hasCRLF = content.includes('\r\n');
+            const lineEnding = hasCRLF ? '\r\n' : '\n';
+
+            // Normalize all content to LF for comparison
+            const normalizedFileContent = content.replace(/\r\n/g, '\n');
+            const normalizedOldContent = oldContent.replace(/\r\n/g, '\n');
+            const normalizedNewContent = newContentArg.replace(/\r\n/g, '\n');
+
+            // Try exact match with normalized line endings first
+            if (normalizedFileContent.includes(normalizedOldContent)) {
+                // Exact match found (after line ending normalization)
+                let resultContent = normalizedFileContent.replace(normalizedOldContent, normalizedNewContent);
+
+                // Restore original line endings if file had CRLF
+                if (hasCRLF) {
+                    resultContent = resultContent.replace(/\n/g, '\r\n');
+                }
+
+                // Show concise progress instead of diff
+                const oldLineCount = normalizedOldContent.split('\n').length;
+                const newLineCount = normalizedNewContent.split('\n').length;
+                console.log(colors.warning(`📝 Editing: ${args.path} (${oldLineCount} → ${newLineCount} lines)...`));
+
+                if (!autoApprove) {
+                    const { proceed } = await inquirer.prompt([{
+                        type: 'confirm', name: 'proceed', message: 'Apply?', default: true
+                    }]);
+                    if (!proceed) return { success: false, error: 'Cancelled' };
+                }
+
+                const result = await writeFile(filePath, resultContent);
+                if (result.success) printSuccess(`✅ Edited: ${args.path}`);
+                return result;
             }
 
-            const newContent = existing.content.replace(args.old_content, args.new_content);
-            if (showDiff) {
-                console.log('\n' + colors.warning('📝 Edit:') + ` ${args.path}`);
-                printCode(generateDiff(args.old_content, args.new_content), 'diff');
+            // Try with normalized whitespace (convert multiple spaces/tabs to single space)
+            const wsNormalizedContent = normalizedFileContent.replace(/[ \t]+/g, ' ');
+            const wsNormalizedOld = normalizedOldContent.replace(/[ \t]+/g, ' ');
+
+            if (wsNormalizedContent.includes(wsNormalizedOld)) {
+                // Find the original text that matches when normalized
+                const lines = normalizedFileContent.split('\n');
+                const oldLines = normalizedOldContent.split('\n');
+
+                // Find starting line
+                let startIdx = -1;
+                for (let i = 0; i <= lines.length - oldLines.length; i++) {
+                    let matches = true;
+                    for (let j = 0; j < oldLines.length; j++) {
+                        if (lines[i + j].replace(/[ \t]+/g, ' ').trim() !== oldLines[j].replace(/[ \t]+/g, ' ').trim()) {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        startIdx = i;
+                        break;
+                    }
+                }
+
+                if (startIdx >= 0) {
+                    // Replace the matching lines with new content
+                    const before = lines.slice(0, startIdx).join('\n');
+                    const after = lines.slice(startIdx + oldLines.length).join('\n');
+                    let resultContent = before + (before ? '\n' : '') + normalizedNewContent + (after ? '\n' : '') + after;
+
+                    // Restore original line endings if file had CRLF
+                    if (hasCRLF) {
+                        resultContent = resultContent.replace(/\n/g, '\r\n');
+                    }
+
+                    // Show concise progress instead of diff
+                    const newLineCount = normalizedNewContent.split('\n').length;
+                    console.log(colors.warning(`📝 Editing (fuzzy): ${args.path} at line ${startIdx + 1} (${oldLines.length} → ${newLineCount} lines)...`));
+
+                    if (!autoApprove) {
+                        const { proceed } = await inquirer.prompt([{
+                            type: 'confirm', name: 'proceed', message: 'Apply?', default: true
+                        }]);
+                        if (!proceed) return { success: false, error: 'Cancelled' };
+                    }
+
+                    const result = await writeFile(filePath, resultContent);
+                    if (result.success) printSuccess(`✅ Edited: ${args.path}`);
+                    return result;
+                }
             }
 
-            if (!autoApprove) {
-                const { proceed } = await inquirer.prompt([{
-                    type: 'confirm', name: 'proceed', message: 'Apply?', default: true
-                }]);
-                if (!proceed) return { success: false, error: 'Cancelled' };
+            // Still no match - show helpful error
+            const searchLine = normalizedOldContent.split('\n')[0].trim().slice(0, 20);
+            const lines = normalizedFileContent.split('\n');
+            let hint = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].toLowerCase().includes(searchLine.toLowerCase().slice(0, 10))) {
+                    hint = `\nSimilar at line ${i + 1}: "${lines[i].trim().slice(0, 60)}"`;
+                    break;
+                }
             }
 
-            const result = await writeFile(filePath, newContent);
-            if (result.success) printSuccess(`✅ Edited: ${args.path}`);
-            return result;
+            return {
+                success: false,
+                error: `Content not found in file.${hint}\nTip: Use read_file first, then copy the EXACT text to edit.`
+            };
         }
 
         case 'list_directory': {
@@ -430,30 +620,32 @@ export async function executeTool(toolName, args, cwd, options = {}) {
         // NEW TOOLS
         case 'grep': {
             try {
+                // Cross-platform grep implementation using JS
                 const searchPath = resolvePath(args.path || '.');
-                const include = args.include ? `--include="${args.include}"` : '';
-                const cmd = `grep -rn ${include} "${args.pattern}" "${searchPath}" 2>/dev/null || true`;
-                const output = execSync(cmd, { cwd, encoding: 'utf-8', maxBuffer: 1024 * 1024 });
-                const lines = output.trim().split('\n').filter(l => l).slice(0, 50);
-                printInfo(`🔍 Grep: ${lines.length} matches`);
-                return { success: true, matches: lines, content: lines.join('\n') };
-            } catch (e) {
-                // Fallback: simple file search
-                const files = await searchFiles(args.include || '**/*', resolvePath(args.path || '.'));
+                const pattern = args.include || '**/*';
+                const files = await searchFiles(pattern, searchPath);
                 const matches = [];
-                for (const file of files.slice(0, 20)) {
-                    const content = await readFile(file);
-                    if (content.success && content.content.includes(args.pattern)) {
-                        const lines = content.content.split('\n');
-                        lines.forEach((line, i) => {
-                            if (line.includes(args.pattern)) {
-                                matches.push(`${path.relative(cwd, file)}:${i + 1}: ${line.trim()}`);
-                            }
-                        });
+
+                for (const file of files.slice(0, 50)) {
+                    try {
+                        const content = await readFile(file);
+                        if (content.success) {
+                            const lines = content.content.split(/\r?\n/);
+                            lines.forEach((line, i) => {
+                                if (line.includes(args.pattern)) {
+                                    matches.push(`${path.relative(cwd, file)}:${i + 1}: ${line.trim()}`);
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        // Skip files that can't be read
                     }
                 }
-                printInfo(`🔍 Found ${matches.length} matches`);
+
+                printInfo(`🔍 Grep: ${matches.length} matches`);
                 return { success: true, matches: matches.slice(0, 50), content: matches.slice(0, 50).join('\n') };
+            } catch (e) {
+                return { success: false, error: e.message };
             }
         }
 
@@ -466,31 +658,48 @@ export async function executeTool(toolName, args, cwd, options = {}) {
         }
 
         case 'find_replace': {
-            const searchPath = resolvePath(args.path || '.');
-            const pattern = args.include || '**/*';
-            const files = await searchFiles(pattern, searchPath);
-            let count = 0;
+            try {
+                const searchPath = resolvePath(args.path || '.');
+                const pattern = args.include || '**/*';
+                const files = await searchFiles(pattern, searchPath);
+                let count = 0;
 
-            console.log('\n' + colors.warning(`Find: "${args.find}" → Replace: "${args.replace}"`));
+                // Normalize find/replace for line ending compatibility
+                const normalizedFind = args.find.replace(/\r\n/g, '\n');
+                const normalizedReplace = args.replace.replace(/\r\n/g, '\n');
 
-            if (!autoApprove) {
-                const { proceed } = await inquirer.prompt([{
-                    type: 'confirm', name: 'proceed',
-                    message: `Replace in ${files.length} files?`, default: false
-                }]);
-                if (!proceed) return { success: false, error: 'Cancelled' };
-            }
+                console.log('\n' + colors.warning(`Find: "${args.find}" → Replace: "${args.replace}"`));
 
-            for (const file of files) {
-                const content = await readFile(file);
-                if (content.success && content.content.includes(args.find)) {
-                    const newContent = content.content.replaceAll(args.find, args.replace);
-                    await writeFile(file, newContent);
-                    count++;
+                if (!autoApprove) {
+                    const { proceed } = await inquirer.prompt([{
+                        type: 'confirm', name: 'proceed',
+                        message: `Replace in ${files.length} files?`, default: false
+                    }]);
+                    if (!proceed) return { success: false, error: 'Cancelled' };
                 }
+
+                for (const file of files) {
+                    const content = await readFile(file);
+                    if (content.success) {
+                        const hasCRLF = content.content.includes('\r\n');
+                        const normalizedContent = content.content.replace(/\r\n/g, '\n');
+
+                        if (normalizedContent.includes(normalizedFind)) {
+                            let newContent = normalizedContent.replaceAll(normalizedFind, normalizedReplace);
+                            // Restore original line endings
+                            if (hasCRLF) {
+                                newContent = newContent.replace(/\n/g, '\r\n');
+                            }
+                            await writeFile(file, newContent);
+                            count++;
+                        }
+                    }
+                }
+                printSuccess(`✅ Replaced in ${count} files`);
+                return { success: true, filesModified: count };
+            } catch (e) {
+                return { success: false, error: e.message };
             }
-            printSuccess(`✅ Replaced in ${count} files`);
-            return { success: true, filesModified: count };
         }
 
         case 'create_directory': {
@@ -501,89 +710,136 @@ export async function executeTool(toolName, args, cwd, options = {}) {
         }
 
         case 'delete_file': {
-            const filePath = resolvePath(args.path);
-            console.log('\n' + colors.error(`🗑️ Delete: ${args.path}`));
+            try {
+                const filePath = resolvePath(args.path);
+                console.log('\n' + colors.error(`🗑️ Delete: ${args.path}`));
 
-            if (!autoApprove) {
-                const { proceed } = await inquirer.prompt([{
-                    type: 'confirm', name: 'proceed', message: 'Delete?', default: false
-                }]);
-                if (!proceed) return { success: false, error: 'Cancelled' };
+                if (!autoApprove) {
+                    const { proceed } = await inquirer.prompt([{
+                        type: 'confirm', name: 'proceed', message: 'Delete?', default: false
+                    }]);
+                    if (!proceed) return { success: false, error: 'Cancelled' };
+                }
+
+                await fs.rm(filePath, { recursive: true });
+                printSuccess(`🗑️ Deleted: ${args.path}`);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: `Failed to delete: ${e.message}` };
             }
-
-            await fs.rm(filePath, { recursive: true });
-            printSuccess(`🗑️ Deleted: ${args.path}`);
-            return { success: true };
         }
 
         case 'move_file': {
-            const source = resolvePath(args.source);
-            const dest = resolvePath(args.destination);
-            await fs.rename(source, dest);
-            printSuccess(`📦 Moved: ${args.source} → ${args.destination}`);
-            return { success: true };
+            try {
+                const source = resolvePath(args.source);
+                const dest = resolvePath(args.destination);
+                // Ensure destination directory exists
+                await fs.mkdir(path.dirname(dest), { recursive: true });
+                await fs.rename(source, dest);
+                printSuccess(`📦 Moved: ${args.source} → ${args.destination}`);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: `Failed to move: ${e.message}` };
+            }
         }
 
         case 'copy_file': {
-            const source = resolvePath(args.source);
-            const dest = resolvePath(args.destination);
-            await fs.copyFile(source, dest);
-            printSuccess(`📋 Copied: ${args.source} → ${args.destination}`);
-            return { success: true };
+            try {
+                const source = resolvePath(args.source);
+                const dest = resolvePath(args.destination);
+                // Ensure destination directory exists
+                await fs.mkdir(path.dirname(dest), { recursive: true });
+                await fs.copyFile(source, dest);
+                printSuccess(`📋 Copied: ${args.source} → ${args.destination}`);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: `Failed to copy: ${e.message}` };
+            }
         }
 
         case 'file_info': {
-            const filePath = resolvePath(args.path);
-            const stats = await fs.stat(filePath);
-            const info = {
-                path: args.path,
-                size: stats.size,
-                sizeHuman: formatBytes(stats.size),
-                isDirectory: stats.isDirectory(),
-                created: stats.birthtime,
-                modified: stats.mtime
-            };
-            printInfo(`ℹ️ ${args.path}: ${info.sizeHuman}, modified ${info.modified.toLocaleDateString()}`);
-            return { success: true, ...info };
+            try {
+                const filePath = resolvePath(args.path);
+                const stats = await fs.stat(filePath);
+                const info = {
+                    path: args.path,
+                    size: stats.size,
+                    sizeHuman: formatBytes(stats.size),
+                    isDirectory: stats.isDirectory(),
+                    created: stats.birthtime,
+                    modified: stats.mtime
+                };
+                printInfo(`ℹ️ ${args.path}: ${info.sizeHuman}, modified ${info.modified.toLocaleDateString()}`);
+                return { success: true, ...info };
+            } catch (e) {
+                return { success: false, error: `File not found: ${e.message}` };
+            }
         }
 
         case 'append_file': {
-            const filePath = resolvePath(args.path);
-            await fs.appendFile(filePath, args.content);
-            printSuccess(`📝 Appended to: ${args.path}`);
-            return { success: true };
+            try {
+                const filePath = resolvePath(args.path);
+                // Create directory if it doesn't exist
+                await fs.mkdir(path.dirname(filePath), { recursive: true });
+                await fs.appendFile(filePath, args.content);
+                printSuccess(`📝 Appended to: ${args.path}`);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: `Failed to append: ${e.message}` };
+            }
         }
 
         case 'insert_at_line': {
-            const filePath = resolvePath(args.path);
-            const content = await readFile(filePath);
-            if (!content.success) return content;
+            try {
+                const filePath = resolvePath(args.path);
+                const fileContent = await readFile(filePath);
+                if (!fileContent.success) return fileContent;
 
-            const lines = content.content.split('\n');
-            lines.splice(args.line - 1, 0, args.content);
+                // Preserve line endings
+                const hasCRLF = fileContent.content.includes('\r\n');
+                const normalizedContent = fileContent.content.replace(/\r\n/g, '\n');
+                const lines = normalizedContent.split('\n');
 
-            if (!autoApprove) {
-                const { proceed } = await inquirer.prompt([{
-                    type: 'confirm', name: 'proceed',
-                    message: `Insert at line ${args.line}?`, default: true
-                }]);
-                if (!proceed) return { success: false, error: 'Cancelled' };
+                // Normalize the content to insert
+                const normalizedInsert = args.content.replace(/\r\n/g, '\n');
+                lines.splice(args.line - 1, 0, normalizedInsert);
+
+                if (!autoApprove) {
+                    const { proceed } = await inquirer.prompt([{
+                        type: 'confirm', name: 'proceed',
+                        message: `Insert at line ${args.line}?`, default: true
+                    }]);
+                    if (!proceed) return { success: false, error: 'Cancelled' };
+                }
+
+                let resultContent = lines.join('\n');
+                // Restore original line endings
+                if (hasCRLF) {
+                    resultContent = resultContent.replace(/\n/g, '\r\n');
+                }
+
+                await writeFile(filePath, resultContent);
+                printSuccess(`📝 Inserted at line ${args.line}: ${args.path}`);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: `Failed to insert: ${e.message}` };
             }
-
-            await writeFile(filePath, lines.join('\n'));
-            printSuccess(`📝 Inserted at line ${args.line}: ${args.path}`);
-            return { success: true };
         }
 
         case 'read_lines': {
-            const filePath = resolvePath(args.path);
-            const content = await readFile(filePath);
-            if (!content.success) return content;
+            try {
+                const filePath = resolvePath(args.path);
+                const fileContent = await readFile(filePath);
+                if (!fileContent.success) return fileContent;
 
-            const lines = content.content.split('\n');
-            const selected = lines.slice(args.start - 1, args.end);
-            printInfo(`📄 Lines ${args.start}-${args.end} of ${args.path}`);
-            return { success: true, content: selected.join('\n'), lines: selected };
+                // Handle both CRLF and LF line endings
+                const lines = fileContent.content.split(/\r?\n/);
+                const selected = lines.slice(args.start - 1, args.end);
+                printInfo(`📄 Lines ${args.start}-${args.end} of ${args.path}`);
+                return { success: true, content: selected.join('\n'), lines: selected };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
         }
 
         case 'git_log': {
@@ -622,6 +878,178 @@ export async function executeTool(toolName, args, cwd, options = {}) {
                 const text = await response.text();
                 printInfo(`🌐 Fetched: ${args.url} (${formatBytes(text.length)})`);
                 return { success: true, content: text.slice(0, 10000), status: response.status };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        }
+
+        // NEW CLAUDE CODE-STYLE TOOL IMPLEMENTATIONS
+        case 'todo_write': {
+            try {
+                const todoPath = path.join(cwd, '.mylocalcli', 'todos.json');
+                await fs.mkdir(path.dirname(todoPath), { recursive: true });
+
+                // Format todos for display
+                const todoContent = {
+                    updated: new Date().toISOString(),
+                    todos: args.todos
+                };
+
+                await fs.writeFile(todoPath, JSON.stringify(todoContent, null, 2));
+
+                // Print summary
+                const pending = args.todos.filter(t => t.status === 'pending').length;
+                const inProgress = args.todos.filter(t => t.status === 'in_progress').length;
+                const done = args.todos.filter(t => t.status === 'done').length;
+
+                printSuccess(`📋 Todos: ${pending} pending, ${inProgress} in progress, ${done} done`);
+
+                // Also create a markdown version for easy reading
+                const mdContent = `# Task List\n\n${args.todos.map(t => {
+                    const checkbox = t.status === 'done' ? '[x]' : t.status === 'in_progress' ? '[/]' : '[ ]';
+                    const priority = t.priority ? ` (${t.priority})` : '';
+                    return `- ${checkbox} ${t.content}${priority}`;
+                }).join('\n')}\n`;
+
+                await fs.writeFile(path.join(cwd, '.mylocalcli', 'todos.md'), mdContent);
+
+                return { success: true, todos: args.todos };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        }
+
+        case 'multi_edit_file': {
+            try {
+                const filePath = resolvePath(args.path);
+                const existing = await readFile(filePath);
+                if (!existing.success) {
+                    return { success: false, error: `File not found: ${args.path}` };
+                }
+
+                let content = existing.content;
+                const hasCRLF = content.includes('\r\n');
+
+                // Normalize to LF for processing
+                content = content.replace(/\r\n/g, '\n');
+
+                let editCount = 0;
+                for (const edit of args.edits) {
+                    const normalizedOld = edit.old_content.replace(/\r\n/g, '\n');
+                    const normalizedNew = edit.new_content.replace(/\r\n/g, '\n');
+
+                    if (content.includes(normalizedOld)) {
+                        content = content.replace(normalizedOld, normalizedNew);
+                        editCount++;
+                    }
+                }
+
+                if (editCount === 0) {
+                    return { success: false, error: 'No matching content found for any edits' };
+                }
+
+                // Restore line endings
+                if (hasCRLF) {
+                    content = content.replace(/\n/g, '\r\n');
+                }
+
+                console.log(colors.warning(`📝 Multi-edit: ${args.path} (${editCount}/${args.edits.length} edits)...`));
+
+                if (!autoApprove) {
+                    const { proceed } = await inquirer.prompt([{
+                        type: 'confirm', name: 'proceed', message: 'Apply all edits?', default: true
+                    }]);
+                    if (!proceed) return { success: false, error: 'Cancelled' };
+                }
+
+                const result = await writeFile(filePath, content);
+                if (result.success) printSuccess(`✅ Applied ${editCount} edits to: ${args.path}`);
+                return { success: true, editsApplied: editCount };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        }
+
+        case 'codebase_search': {
+            try {
+                const pattern = args.file_pattern || '**/*.{js,ts,py,java,go,rs,c,cpp,h,jsx,tsx,vue,svelte,md}';
+                const maxResults = args.max_results || 10;
+                const files = await searchFiles(pattern, cwd);
+                const results = [];
+                const queryLower = args.query.toLowerCase();
+                const queryWords = queryLower.split(/\s+/);
+
+                for (const file of files.slice(0, 100)) {
+                    try {
+                        const content = await readFile(file);
+                        if (!content.success) continue;
+
+                        const lines = content.content.split(/\r?\n/);
+                        const relativePath = path.relative(cwd, file);
+
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i];
+                            const lineLower = line.toLowerCase();
+
+                            // Check if line contains query or query words
+                            const matchScore = queryWords.reduce((score, word) => {
+                                return score + (lineLower.includes(word) ? 1 : 0);
+                            }, 0);
+
+                            if (matchScore > 0 || lineLower.includes(queryLower)) {
+                                results.push({
+                                    file: relativePath,
+                                    line: i + 1,
+                                    content: line.trim().slice(0, 200),
+                                    score: matchScore
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        // Skip unreadable files
+                    }
+                }
+
+                // Sort by score and limit results
+                results.sort((a, b) => b.score - a.score);
+                const topResults = results.slice(0, maxResults);
+
+                printInfo(`🔍 Found ${results.length} matches, showing top ${topResults.length}`);
+
+                const content = topResults.map(r =>
+                    `${r.file}:${r.line}: ${r.content}`
+                ).join('\n');
+
+                return { success: true, results: topResults, content };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        }
+
+        case 'ask_user': {
+            try {
+                console.log('\n' + colors.primary('❓ ' + args.question) + '\n');
+
+                let answer;
+                if (args.options && args.options.length > 0) {
+                    const { choice } = await inquirer.prompt([{
+                        type: 'list',
+                        name: 'choice',
+                        message: 'Select an option:',
+                        choices: args.options
+                    }]);
+                    answer = choice;
+                } else {
+                    const { response } = await inquirer.prompt([{
+                        type: 'input',
+                        name: 'response',
+                        message: 'Your answer:'
+                    }]);
+                    answer = response;
+                }
+
+                printInfo(`User answered: ${answer}`);
+                return { success: true, answer };
             } catch (e) {
                 return { success: false, error: e.message };
             }
@@ -684,13 +1112,17 @@ function generateDiff(oldContent, newContent) {
     return diff.slice(0, 30).join('\n') + (diff.length > 30 ? '\n... (truncated)' : '');
 }
 
-// Parse tool calls from AI response
+// Parse tool calls from AI response - handles multiple formats
 export function parseToolCalls(response) {
     const toolCalls = [];
-    const jsonPattern = /```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g;
-    let match;
 
-    while ((match = jsonPattern.exec(response)) !== null) {
+    // Format 1: JSON in markdown code blocks
+    // ```json
+    // {"tool": "write_file", "arguments": {...}}
+    // ```
+    const codeBlockPattern = /```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g;
+    let match;
+    while ((match = codeBlockPattern.exec(response)) !== null) {
         try {
             const parsed = JSON.parse(match[1]);
             if (parsed.tool && parsed.arguments) {
@@ -698,6 +1130,79 @@ export function parseToolCalls(response) {
             }
         } catch (e) { }
     }
+
+    // Format 2: Channel/message format (some models use this)
+    // <|message|>{"tool":"write_file","arguments":{...}}
+    const channelPattern = /<\|message\|>\s*(\{[\s\S]*?"tool"[\s\S]*?\})/g;
+    while ((match = channelPattern.exec(response)) !== null) {
+        try {
+            const parsed = JSON.parse(match[1]);
+            if (parsed.tool && parsed.arguments) {
+                toolCalls.push({ name: parsed.tool, arguments: parsed.arguments });
+            }
+        } catch (e) { }
+    }
+
+    // Format 3: Raw JSON in response (no code blocks)
+    // {"tool": "write_file", "arguments": {...}}
+    if (toolCalls.length === 0) {
+        const rawJsonPattern = /\{"tool"\s*:\s*"([^"]+)"[\s\S]*?"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/g;
+        while ((match = rawJsonPattern.exec(response)) !== null) {
+            try {
+                const fullMatch = match[0];
+                const parsed = JSON.parse(fullMatch);
+                if (parsed.tool && parsed.arguments) {
+                    toolCalls.push({ name: parsed.tool, arguments: parsed.arguments });
+                }
+            } catch (e) { }
+        }
+    }
+
+    // Format 4: Function call format
+    // <function_call>{"name": "write_file", "arguments": {...}}</function_call>
+    const funcCallPattern = /<function_call>\s*(\{[\s\S]*?\})\s*<\/function_call>/g;
+    while ((match = funcCallPattern.exec(response)) !== null) {
+        try {
+            const parsed = JSON.parse(match[1]);
+            if (parsed.name && parsed.arguments) {
+                toolCalls.push({ name: parsed.name, arguments: parsed.arguments });
+            }
+        } catch (e) { }
+    }
+
+    // Format 5: GPT-OSS container.exec format
+    // <|channel|>commentary to=container.exec <|constrain|>json<|message|>{"cmd":["bash","-lc","ls -R"]}
+    const containerExecPattern = /to=container\.exec[^{]*\|message\|>\s*(\{[\s\S]*?\})/g;
+    while ((match = containerExecPattern.exec(response)) !== null) {
+        try {
+            const parsed = JSON.parse(match[1]);
+            if (parsed.cmd && Array.isArray(parsed.cmd)) {
+                // Convert container exec to run_command
+                const command = parsed.cmd.slice(-1)[0]; // Get the actual command
+                toolCalls.push({ name: 'run_command', arguments: { command } });
+            }
+        } catch (e) { }
+    }
+
+    // Format 6: GPT-OSS repo_browser format
+    // <|channel|>commentary to=repo_browser.write_file <|constrain|>json<|message|>{"tool":"write_file","arguments":{...}}
+    const repoBrowserPattern = /to=repo_browser\.(\w+)[^{]*\|message\|>\s*(\{[\s\S]*?\})/g;
+    while ((match = repoBrowserPattern.exec(response)) !== null) {
+        try {
+            const toolName = match[1];
+            const parsed = JSON.parse(match[2]);
+
+            // If the JSON has tool/arguments format, use that
+            if (parsed.tool && parsed.arguments) {
+                toolCalls.push({ name: parsed.tool, arguments: parsed.arguments });
+            }
+            // Otherwise, use the tool name from the channel
+            else if (toolName) {
+                toolCalls.push({ name: toolName, arguments: parsed });
+            }
+        } catch (e) { }
+    }
+
     return toolCalls;
 }
 
