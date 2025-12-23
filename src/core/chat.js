@@ -1,4 +1,5 @@
 import inquirer from 'inquirer';
+import { promptWithPrefix, loadInputHistory, showContextStatus } from '../ui/input.js';
 import { LMStudioProvider } from '../providers/lmstudio.js';
 import { OllamaProvider } from '../providers/ollama.js';
 import { OpenAIProvider } from '../providers/openai.js';
@@ -155,12 +156,8 @@ export async function startChat(options = {}) {
     // Main loop
     while (true) {
         try {
-            const { input } = await inquirer.prompt([{
-                type: 'input',
-                name: 'input',
-                message: colors.user('You:'),
-                prefix: ''
-            }]);
+            // Use enhanced input with history and tab completion
+            const input = await promptWithPrefix('You');
 
             const trimmedInput = input.trim();
 
