@@ -151,10 +151,29 @@ mlc web
 
 Features: Dark theme, voice input, conversation history
 
+## ⌨️ CLI Features (v3.0.1)
+
+- **Input History** - Press ↑/↓ to navigate previous commands
+- **Tab Completion** - Type `/` then Tab for command suggestions
+- **Multi-line Input** - Start with ``` for code blocks
+- **Streaming Progress** - Animated indicator while AI thinks
+- **Token Counter** - See context usage percentage
+
+## 🙏 Credits
+
+This project was built with the assistance of:
+
+- **[Google Antigravity](https://deepmind.google/)** - AI pair programming assistant
+- **[Anthropic Claude Opus 4.5](https://www.anthropic.com/)** - Advanced AI model for code generation
+- **[Claude Code](https://github.com/anthropics/claude-code)** - Inspiration for plugin architecture
+
 ## 📄 License
 
 MIT - Use it, modify it, make it yours!
 
 ---
 
+**Made with ❤️ by [Prashanth Kumar](https://github.com/kprsnt2)**
+
 ⭐ **Star this repo if you find it useful!**
+
