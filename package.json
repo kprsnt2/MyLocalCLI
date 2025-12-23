@@ -1,6 +1,6 @@
 {
   "name": "mylocalcli",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with plugins, hooks, and 26 tools.",
   "main": "src/index.js",
   "type": "module",
