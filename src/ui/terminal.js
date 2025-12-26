@@ -9,6 +9,7 @@ export const colors = {
     success: chalk.hex('#10B981'),
     warning: chalk.hex('#F59E0B'),
     error: chalk.hex('#EF4444'),
+    info: chalk.hex('#3B82F6'),
     muted: chalk.gray,
     code: chalk.hex('#E879F9'),
     user: chalk.hex('#3B82F6'),

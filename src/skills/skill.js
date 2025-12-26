@@ -1,10 +1,15 @@
-// MyLocalCLI - Skills System
+// MyLocalCLI - Modular Skills System
 // Context-aware knowledge injection inspired by Claude Code
+// Skills are loaded from individual SKILL.md files
 
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { printInfo, colors } from '../ui/terminal.js';
+import { fileURLToPath } from 'url';
+import { printInfo, printSuccess, colors } from '../ui/terminal.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Skill definition structure
@@ -13,228 +18,210 @@ import { printInfo, colors } from '../ui/terminal.js';
  * @property {string} description - What this skill provides
  * @property {string[]} globs - File patterns that trigger this skill
  * @property {string[]} alwaysApply - Patterns for always applying
+ * @property {number} priority - Higher priority skills appear first (default: 50)
+ * @property {string[]} tags - Categories for grouping skills
  * @property {string} content - The skill knowledge content
+ * @property {string} source - Path to the SKILL.md file
+ * @property {boolean} isBuiltin - Whether this is a built-in skill
+ * @property {boolean} isCustom - Whether this is a user-defined skill
  */
 
 // Registry of available skills
 const SKILLS = new Map();
 
-// Built-in skills
-const BUILTIN_SKILLS = [
-    {
-        name: 'javascript',
-        description: 'Best practices for JavaScript/TypeScript development',
-        globs: ['**/*.js', '**/*.mjs', '**/*.cjs', '**/*.jsx', '**/*.ts', '**/*.tsx'],
-        content: `# JavaScript/TypeScript Best Practices
+// Skill categories
+export const SKILL_CATEGORIES = {
+    LANGUAGE: 'language',
+    FRAMEWORK: 'framework',
+    TOOL: 'tool',
+    WORKFLOW: 'workflow',
+    SECURITY: 'security',
+    PERFORMANCE: 'performance',
+    DATABASE: 'database',
+    DEVOPS: 'devops'
+};
 
-## Code Style
-- Use const by default, let when reassignment is needed
-- Use template literals for string interpolation
-- Prefer arrow functions for callbacks
-- Use destructuring for object/array access
-- Use async/await over .then() chains
-
-## Error Handling
-- Always handle promise rejections
-- Use try/catch with async/await
-- Provide meaningful error messages
-- Don't swallow errors silently
-
-## Modern Patterns
-- Use optional chaining (?.) and nullish coalescing (??)
-- Use spread operator for object/array copies
-- Use Map/Set for complex data structures
-- Prefer for...of over forEach for iterables
-
-## TypeScript Specific
-- Prefer interfaces over type aliases for objects
-- Use strict mode
-- Avoid any type
-- Use generics for reusable code`
-    },
-    {
-        name: 'python',
-        description: 'Best practices for Python development',
-        globs: ['**/*.py'],
-        content: `# Python Best Practices
-
-## Code Style
-- Follow PEP 8 style guide
-- Use snake_case for functions/variables
-- Use PascalCase for classes
-- Maximum line length: 88 (Black) or 79 (PEP 8)
-
-## Modern Python
-- Use f-strings for formatting
-- Use pathlib for file paths
-- Use dataclasses or Pydantic for data models
-- Type hints for function signatures
-- Use walrus operator := where appropriate
-
-## Error Handling
-- Be specific with exception types
-- Use context managers (with) for resources
-- Log exceptions with traceback
-
-## Virtual Environments
-- Always use virtual environments
-- Pin dependency versions
-- Use requirements.txt or pyproject.toml`
-    },
-    {
-        name: 'git-workflow',
-        description: 'Git best practices and workflows',
-        globs: ['**/.git/**', '**/.gitignore'],
-        alwaysApply: ['**/CONTRIBUTING.md'],
-        content: `# Git Workflow Best Practices
-
-## Commit Messages
-- Use imperative mood: "Add feature" not "Added feature"
-- First line: max 50 chars, summary
-- Body: explain what and why, not how
-- Reference issues: "Fixes #123"
-
-## Branch Naming
-- feature/description
-- fix/description
-- refactor/description
-- docs/description
-
-## Workflow
-- Keep commits atomic and focused
-- Rebase feature branches on main
-- Squash WIP commits before merge
-- Never force push to shared branches
-
-## .gitignore
-- Ignore build artifacts
-- Ignore dependency directories
-- Ignore local config files
-- Ignore IDE settings`
-    },
-    {
-        name: 'react',
-        description: 'React development patterns and best practices',
-        globs: ['**/*.jsx', '**/*.tsx', '**/package.json'],
-        content: `# React Best Practices
-
-## Component Design
-- Keep components small and focused
-- Prefer functional components with hooks
-- Use composition over inheritance
-- Lift state only when needed
-
-## Hooks
-- Use useState for local state
-- Use useEffect for side effects
-- Use useCallback/useMemo to prevent rerenders
-- Create custom hooks for reusable logic
-- Always include dependencies array
-
-## Performance
-- Use React.memo for expensive components
-- Lazy load routes and heavy components
-- Use keys properly in lists (never use index)
-- Avoid inline objects/functions in JSX
-
-## State Management
-- Start with local state
-- Use Context for theme/auth
-- Consider Zustand/Redux for complex apps
-- Use React Query for server state`
-    },
-    {
-        name: 'nodejs',
-        description: 'Node.js server development patterns',
-        globs: ['**/package.json', '**/server.js', '**/app.js', '**/index.js'],
-        content: `# Node.js Best Practices
-
-## Project Structure
-- src/ for source code
-- lib/ for utilities
-- tests/ for test files
-- Keep entry point minimal
-
-## Async Patterns
-- Use async/await everywhere
-- Handle all promise rejections
-- Use Promise.all for parallel tasks
-- Set timeouts for external calls
-
-## Error Handling
-- Use centralized error handler
-- Log errors with context
-- Return appropriate status codes
-- Never expose stack traces in production
-
-## Environment
-- Use .env for local config
-- Validate env variables at startup
-- Use different configs per environment
-- Never commit secrets
-
-## Security
-- Validate all input
-- Use helmet for HTTP headers
-- Rate limit APIs
-- Keep dependencies updated`
-    },
-    {
-        name: 'testing',
-        description: 'Testing patterns and best practices',
-        globs: ['**/*.test.js', '**/*.spec.js', '**/*.test.ts', '**/*.spec.ts', '**/test/**', '**/tests/**', '**/__tests__/**'],
-        content: `# Testing Best Practices
-
-## Test Structure
-- Arrange: Set up test data
-- Act: Execute the code
-- Assert: Verify results
-- Use descriptive test names
-
-## Unit Tests
-- Test one thing per test
-- Mock external dependencies
-- Test edge cases
-- Aim for high coverage
-
-## Integration Tests
-- Test component interactions
-- Use test database
-- Clean up after tests
-- Test happy and error paths
-
-## E2E Tests
-- Test critical user flows
-- Keep tests independent
-- Use stable selectors
-- Handle async properly
-
-## Mocking
-- Mock at boundaries
-- Use factories for test data
-- Don't over-mock
-- Reset mocks between tests`
-    }
-];
+// Built-in skills directory
+const BUILTIN_SKILLS_DIR = path.join(__dirname, 'builtin');
 
 /**
- * Initialize built-in skills
+ * Parse YAML-like frontmatter from a skill file
+ * @param {string} content - File content
+ * @returns {{ meta: Object, body: string }}
  */
-export function initializeBuiltinSkills() {
-    for (const skill of BUILTIN_SKILLS) {
-        SKILLS.set(skill.name, skill);
+function parseFrontmatter(content) {
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+
+    const meta = {};
+    let body = content;
+
+    if (frontmatterMatch) {
+        const frontmatter = frontmatterMatch[1];
+        body = content.slice(frontmatterMatch[0].length).trim();
+
+        for (const line of frontmatter.split('\n')) {
+            const colonIdx = line.indexOf(':');
+            if (colonIdx > 0) {
+                const key = line.slice(0, colonIdx).trim();
+                let value = line.slice(colonIdx + 1).trim();
+
+                // Remove quotes
+                if ((value.startsWith('"') && value.endsWith('"')) ||
+                    (value.startsWith("'") && value.endsWith("'"))) {
+                    value = value.slice(1, -1);
+                }
+
+                // Parse arrays
+                if (value.startsWith('[') && value.endsWith(']')) {
+                    try {
+                        value = JSON.parse(value);
+                    } catch (e) {
+                        // Keep as string
+                    }
+                }
+
+                // Parse numbers
+                if (!isNaN(value) && value !== '') {
+                    value = Number(value);
+                }
+
+                meta[key] = value;
+            }
+        }
     }
+
+    return { meta, body };
+}
+
+/**
+ * Parse a SKILL.md file
+ * @param {string} filePath - Path to the SKILL.md file
+ * @returns {Promise<Skill|null>}
+ */
+export async function parseSkillFile(filePath) {
+    try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        const { meta, body } = parseFrontmatter(content);
+
+        return {
+            name: meta.name || path.basename(path.dirname(filePath)),
+            description: meta.description || '',
+            version: meta.version || '1.0.0',
+            priority: meta.priority || 50,
+            globs: meta.globs || [],
+            alwaysApply: meta.alwaysApply || [],
+            tags: meta.tags || [],
+            content: body,
+            source: filePath,
+            isBuiltin: filePath.includes('builtin'),
+            isCustom: !filePath.includes('builtin')
+        };
+    } catch (error) {
+        // File doesn't exist or can't be read
+        return null;
+    }
+}
+
+/**
+ * Load skills from a directory
+ * @param {string} dir - Directory containing skill folders
+ * @param {Object} options - Options
+ * @returns {Promise<number>} - Number of skills loaded
+ */
+async function loadSkillsFromDirectory(dir, options = {}) {
+    const { isBuiltin = false } = options;
+    let count = 0;
+
+    try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                // Look for SKILL.md in the folder
+                const skillPath = path.join(dir, entry.name, 'SKILL.md');
+                const skill = await parseSkillFile(skillPath);
+                if (skill) {
+                    skill.isBuiltin = isBuiltin;
+                    skill.isCustom = !isBuiltin;
+                    SKILLS.set(skill.name, skill);
+                    count++;
+                }
+            } else if (entry.name.endsWith('.md') && entry.name !== 'README.md') {
+                // Also support single-file skills (e.g., python.md)
+                const skillPath = path.join(dir, entry.name);
+                const skill = await parseSkillFile(skillPath);
+                if (skill) {
+                    skill.isBuiltin = isBuiltin;
+                    skill.isCustom = !isBuiltin;
+                    SKILLS.set(skill.name, skill);
+                    count++;
+                }
+            }
+        }
+    } catch (error) {
+        // Directory doesn't exist
+    }
+
+    return count;
+}
+
+/**
+ * Load all skills (built-in and custom)
+ * @param {string} cwd - Current working directory
+ */
+export async function loadSkills(cwd) {
+    // Clear existing skills
+    SKILLS.clear();
+
+    // Load built-in skills
+    const builtinCount = await loadSkillsFromDirectory(BUILTIN_SKILLS_DIR, { isBuiltin: true });
+
+    // Load custom skills from user directories
+    const customDirs = [
+        path.join(os.homedir(), '.mylocalcli', 'skills'),
+        path.join(cwd, '.mylocalcli', 'skills')
+    ];
+
+    let customCount = 0;
+    for (const dir of customDirs) {
+        customCount += await loadSkillsFromDirectory(dir, { isBuiltin: false });
+    }
+
+    if (customCount > 0) {
+        printInfo(`Loaded ${customCount} custom skill(s)`);
+    }
+
+    return getAllSkills();
+}
+
+/**
+ * Initialize built-in skills (async initialization)
+ */
+export async function initializeBuiltinSkills() {
+    await loadSkillsFromDirectory(BUILTIN_SKILLS_DIR, { isBuiltin: true });
 }
 
 /**
  * Register a skill
+ * @param {Skill} skill - Skill to register
  */
 export function registerSkill(skill) {
+    skill.priority = skill.priority || 50;
+    skill.tags = skill.tags || [];
     SKILLS.set(skill.name, skill);
 }
 
 /**
+ * Unregister a skill
+ * @param {string} name - Skill name
+ */
+export function unregisterSkill(name) {
+    return SKILLS.delete(name);
+}
+
+/**
  * Get a skill by name
+ * @param {string} name - Skill name
  */
 export function getSkill(name) {
     return SKILLS.get(name);
@@ -242,28 +229,68 @@ export function getSkill(name) {
 
 /**
  * Get all registered skills
+ * @param {Object} options - Filter options
  */
-export function getAllSkills() {
-    return Array.from(SKILLS.values());
+export function getAllSkills(options = {}) {
+    let skills = Array.from(SKILLS.values());
+
+    if (options.category || options.tag) {
+        skills = skills.filter(skill =>
+            skill.tags?.includes(options.category || options.tag)
+        );
+    }
+
+    if (options.builtinOnly) {
+        skills = skills.filter(skill => skill.isBuiltin);
+    }
+
+    if (options.customOnly) {
+        skills = skills.filter(skill => skill.isCustom);
+    }
+
+    // Sort by priority (higher first)
+    return skills.sort((a, b) => (b.priority || 50) - (a.priority || 50));
+}
+
+/**
+ * Get skills grouped by category
+ */
+export function getSkillsByCategory() {
+    const byCategory = {};
+
+    for (const skill of SKILLS.values()) {
+        const category = skill.tags?.[0] || 'other';
+        if (!byCategory[category]) {
+            byCategory[category] = [];
+        }
+        byCategory[category].push(skill);
+    }
+
+    // Sort each category by priority
+    for (const category of Object.keys(byCategory)) {
+        byCategory[category].sort((a, b) => (b.priority || 50) - (a.priority || 50));
+    }
+
+    return byCategory;
 }
 
 /**
  * Check if a file path matches a glob pattern
- * Simple glob matching (supports * and **)
  */
 function matchGlob(pattern, filePath) {
-    // Normalize paths
-    const normalizedPath = filePath.replace(/\\/g, '/');
-    const normalizedPattern = pattern.replace(/\\/g, '/');
+    const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+    const normalizedPattern = pattern.replace(/\\/g, '/').toLowerCase();
 
-    // Convert glob to regex
     let regex = normalizedPattern
         .replace(/\./g, '\\.')
         .replace(/\*\*/g, '{{DOUBLESTAR}}')
         .replace(/\*/g, '[^/]*')
         .replace(/\{\{DOUBLESTAR\}\}/g, '.*');
 
-    regex = `^${regex}$`;
+    if (!regex.startsWith('.*')) {
+        regex = `(^|.*)${regex}`;
+    }
+    regex = `${regex}($|.*)`;
 
     try {
         return new RegExp(regex).test(normalizedPath);
@@ -275,190 +302,230 @@ function matchGlob(pattern, filePath) {
 /**
  * Find skills that match given file paths
  * @param {string[]} files - List of file paths
+ * @param {Object} options - Options
  */
-export function findMatchingSkills(files) {
-    const matchedSkills = new Set();
+export function findMatchingSkills(files, options = {}) {
+    const { maxSkills = 5 } = options;
+    const matchedSkills = new Map();
 
     for (const skill of SKILLS.values()) {
+        let matchCount = 0;
+
         for (const file of files) {
-            // Check globs
             for (const glob of skill.globs || []) {
                 if (matchGlob(glob, file)) {
-                    matchedSkills.add(skill.name);
+                    matchCount++;
                     break;
                 }
             }
 
-            // Check alwaysApply
             for (const pattern of skill.alwaysApply || []) {
                 if (matchGlob(pattern, file)) {
-                    matchedSkills.add(skill.name);
+                    matchCount += 3;
                     break;
                 }
             }
         }
+
+        if (matchCount > 0) {
+            matchedSkills.set(skill.name, {
+                skill,
+                matchCount,
+                priority: skill.priority || 50
+            });
+        }
     }
 
-    return Array.from(matchedSkills).map(name => SKILLS.get(name));
+    return Array.from(matchedSkills.values())
+        .sort((a, b) => (b.matchCount * b.priority) - (a.matchCount * a.priority))
+        .slice(0, maxSkills)
+        .map(entry => entry.skill);
 }
 
 /**
- * Get skill content to inject into context based on file paths
- * @param {string[]} files - List of file paths in the project
+ * Get skill content to inject into context
+ * @param {string[]} files - List of file paths
+ * @param {Object} options - Options
  */
-export function getSkillContext(files) {
-    const skills = findMatchingSkills(files);
+export function getSkillContext(files, options = {}) {
+    const { maxSkills = 4, maxLength = 8000 } = options;
+    const skills = findMatchingSkills(files, { maxSkills });
 
     if (skills.length === 0) {
         return '';
     }
 
-    const lines = ['## Relevant Best Practices', ''];
+    const lines = ['## Relevant Best Practices\n'];
+    let totalLength = lines[0].length;
 
     for (const skill of skills) {
-        lines.push(`### ${skill.name}`);
-        lines.push('');
-        lines.push(skill.content);
-        lines.push('');
+        const header = `### ${skill.name} (${skill.description})\n\n`;
+        const content = skill.content + '\n\n';
+
+        if (totalLength + header.length + content.length > maxLength) {
+            const remainingSpace = maxLength - totalLength - header.length - 100;
+            if (remainingSpace > 200) {
+                lines.push(header);
+                lines.push(content.slice(0, remainingSpace) + '\n...[truncated]\n\n');
+            }
+            break;
+        }
+
+        lines.push(header);
+        lines.push(content);
+        totalLength += header.length + content.length;
     }
 
-    return lines.join('\n');
+    return lines.join('');
 }
 
 /**
- * Load skills from SKILL.md files
- * Looks in:
- * - ~/.mylocalcli/skills/
- * - .mylocalcli/skills/
+ * Create a new skill from template
+ * @param {string} name - Skill name
+ * @param {string} directory - Directory to create skill in
  */
-export async function loadSkills(cwd) {
-    // Initialize built-in skills first
-    initializeBuiltinSkills();
+export async function createSkillTemplate(name, directory) {
+    const skillDir = path.join(directory, '.mylocalcli', 'skills', name);
+    const skillPath = path.join(skillDir, 'SKILL.md');
 
-    const locations = [
-        path.join(os.homedir(), '.mylocalcli', 'skills'),
-        path.join(cwd, '.mylocalcli', 'skills')
-    ];
+    await fs.mkdir(skillDir, { recursive: true });
 
-    for (const dir of locations) {
-        try {
-            const entries = await fs.readdir(dir, { withFileTypes: true });
+    const template = `---
+name: "${name}"
+description: "Description of what this skill provides"
+priority: 50
+globs: ["**/*.js", "**/*.ts"]
+tags: ["custom"]
+---
 
-            for (const entry of entries) {
-                if (entry.isDirectory()) {
-                    const skillPath = path.join(dir, entry.name, 'SKILL.md');
-                    try {
-                        const skill = await parseSkillFile(skillPath);
-                        if (skill) {
-                            registerSkill(skill);
-                        }
-                    } catch (error) {
-                        // SKILL.md not found
-                    }
-                }
-            }
-        } catch (error) {
-            // Directory doesn't exist - that's fine
-        }
-    }
+# ${name.charAt(0).toUpperCase() + name.slice(1)} Best Practices
 
-    return getAllSkills();
+## Section 1
+
+- Best practice 1
+- Best practice 2
+- Best practice 3
+
+## Section 2
+
+- More practices here
+`;
+
+    await fs.writeFile(skillPath, template);
+    printSuccess(`Created skill template: ${skillPath}`);
+    return skillPath;
 }
 
 /**
- * Parse a SKILL.md file
+ * Search skills by keyword
+ * @param {string} query - Search query
  */
-export async function parseSkillFile(filePath) {
-    try {
-        const content = await fs.readFile(filePath, 'utf-8');
-        const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-
-        const meta = {};
-        let body = content;
-
-        if (frontmatterMatch) {
-            const frontmatter = frontmatterMatch[1];
-            body = content.slice(frontmatterMatch[0].length).trim();
-
-            for (const line of frontmatter.split('\n')) {
-                const colonIdx = line.indexOf(':');
-                if (colonIdx > 0) {
-                    const key = line.slice(0, colonIdx).trim();
-                    let value = line.slice(colonIdx + 1).trim();
-
-                    // Remove quotes
-                    if ((value.startsWith('"') && value.endsWith('"')) ||
-                        (value.startsWith("'") && value.endsWith("'"))) {
-                        value = value.slice(1, -1);
-                    }
-
-                    // Parse arrays
-                    if (value.startsWith('[') && value.endsWith(']')) {
-                        try {
-                            value = JSON.parse(value);
-                        } catch (e) {
-                            // Keep as string
-                        }
-                    }
-
-                    meta[key] = value;
-                }
-            }
-        }
-
-        return {
-            name: meta.name || path.basename(path.dirname(filePath)),
-            description: meta.description || '',
-            version: meta.version || '1.0.0',
-            globs: meta.globs || [],
-            alwaysApply: meta.alwaysApply || [],
-            content: body,
-            source: filePath
-        };
-    } catch (error) {
-        console.error(`Failed to parse skill file ${filePath}:`, error.message);
-        return null;
-    }
+export function searchSkills(query) {
+    const lowerQuery = query.toLowerCase();
+    return getAllSkills().filter(skill =>
+        skill.name.toLowerCase().includes(lowerQuery) ||
+        skill.description.toLowerCase().includes(lowerQuery) ||
+        skill.content.toLowerCase().includes(lowerQuery) ||
+        skill.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
+    );
 }
 
 /**
  * Print skills list
  */
-export function printSkillsList() {
+export function printSkillsList(options = {}) {
+    const { grouped = false, verbose = false } = options;
+
     console.log('\n' + colors.primary('━━━ Available Skills ━━━') + '\n');
 
-    const skills = getAllSkills();
+    if (grouped) {
+        const byCategory = getSkillsByCategory();
+        const categoryNames = {
+            [SKILL_CATEGORIES.LANGUAGE]: '📚 Languages',
+            [SKILL_CATEGORIES.FRAMEWORK]: '🏗️  Frameworks',
+            [SKILL_CATEGORIES.TOOL]: '🔧 Tools',
+            [SKILL_CATEGORIES.WORKFLOW]: '📋 Workflows',
+            [SKILL_CATEGORIES.SECURITY]: '🔒 Security',
+            [SKILL_CATEGORIES.PERFORMANCE]: '⚡ Performance',
+            [SKILL_CATEGORIES.DATABASE]: '🗄️  Databases',
+            [SKILL_CATEGORIES.DEVOPS]: '🚀 DevOps',
+            'other': '📦 Other'
+        };
 
-    if (skills.length === 0) {
-        console.log('  ' + colors.muted('No skills available'));
-        return;
-    }
+        for (const [category, skills] of Object.entries(byCategory)) {
+            console.log(`  ${categoryNames[category] || category}`);
+            console.log('  ' + colors.muted('─'.repeat(30)));
 
-    for (const skill of skills) {
-        console.log(`  ${colors.success('◆')} ${colors.primary(skill.name)}`);
-        console.log(`    ${colors.muted(skill.description)}`);
-        if (skill.globs && skill.globs.length > 0) {
-            console.log(`    ${colors.muted('Triggers:')} ${skill.globs.slice(0, 3).join(', ')}${skill.globs.length > 3 ? '...' : ''}`);
+            for (const skill of skills) {
+                const badge = skill.isCustom ? colors.secondary(' [custom]') : '';
+                console.log(`    ${colors.success('◆')} ${colors.primary(skill.name)}${badge}`);
+                if (verbose) {
+                    console.log(`      ${colors.muted(skill.description)}`);
+                }
+            }
+            console.log();
+        }
+    } else {
+        const skills = getAllSkills();
+
+        if (skills.length === 0) {
+            console.log('  ' + colors.muted('No skills loaded. Run with a project to load skills.'));
+            return;
+        }
+
+        for (const skill of skills) {
+            const badge = skill.isCustom ? colors.secondary(' [custom]') : '';
+            console.log(`  ${colors.success('◆')} ${colors.primary(skill.name)}${badge}`);
+            console.log(`    ${colors.muted(skill.description)}`);
         }
         console.log();
     }
 
+    const builtinCount = getAllSkills({ builtinOnly: true }).length;
+    const customCount = getAllSkills({ customOnly: true }).length;
+
+    console.log(colors.muted(`  Total: ${SKILLS.size} skills (${builtinCount} built-in, ${customCount} custom)`));
     console.log(colors.muted('  Skills are auto-applied based on file context'));
+    console.log(colors.muted('  Create custom skills in .mylocalcli/skills/'));
     console.log();
 }
 
-// Initialize built-in skills on module load
-initializeBuiltinSkills();
+/**
+ * Get skill info for display
+ * @param {string} name - Skill name
+ */
+export function getSkillInfo(name) {
+    const skill = SKILLS.get(name);
+    if (!skill) return null;
+
+    return {
+        name: skill.name,
+        description: skill.description,
+        priority: skill.priority,
+        globs: skill.globs,
+        tags: skill.tags,
+        source: skill.source,
+        isBuiltin: skill.isBuiltin,
+        isCustom: skill.isCustom,
+        contentPreview: skill.content.slice(0, 500) + (skill.content.length > 500 ? '...' : '')
+    };
+}
 
 export default {
+    loadSkills,
     initializeBuiltinSkills,
     registerSkill,
+    unregisterSkill,
     getSkill,
+    getSkillInfo,
     getAllSkills,
-    loadSkills,
+    getSkillsByCategory,
     parseSkillFile,
+    createSkillTemplate,
     findMatchingSkills,
     getSkillContext,
     printSkillsList,
-    BUILTIN_SKILLS
+    searchSkills,
+    SKILL_CATEGORIES,
+    BUILTIN_SKILLS_DIR
 };

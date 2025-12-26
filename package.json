@@ -1,7 +1,7 @@
 {
   "name": "mylocalcli",
-  "version": "3.0.1",
-  "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with plugins, hooks, and 26 tools.",
+  "version": "3.1.0",
+  "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with 22 skills, 26 tools, and 5 agents.",
   "main": "src/index.js",
   "type": "module",
   "bin": {
@@ -10,12 +10,19 @@
   },
   "files": [
     "src",
-    "web"
+    "docs"
   ],
   "scripts": {
     "start": "node src/index.js",
     "dev": "node src/index.js",
-    "web": "node src/index.js web"
+    "web": "node src/index.js web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests"
   },
   "keywords": [
     "cli",
@@ -54,5 +61,12 @@
     "marked": "^11.1.1",
     "marked-terminal": "^6.2.0",
     "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.16",
+    "eslint": "^9.39.2",
+    "globals": "^16.5.0",
+    "prettier": "^3.7.4",
+    "vitest": "^4.0.16"
   }
 }

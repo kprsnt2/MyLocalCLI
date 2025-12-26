@@ -2,6 +2,60 @@ import { spawn } from 'child_process';
 import inquirer from 'inquirer';
 import { printCommand, printWarning, printError, printSuccess, colors } from '../ui/terminal.js';
 
+// Cross-platform command translation map (Unix -> Windows)
+const UNIX_TO_WINDOWS_COMMANDS = {
+    'ls': 'dir',
+    'ls -la': 'dir',
+    'ls -l': 'dir',
+    'ls -a': 'dir /a',
+    'ls -al': 'dir /a',
+    'ls -lh': 'dir',
+    'cat': 'type',
+    'rm': 'del',
+    'rm -f': 'del /f',
+    'rm -r': 'rmdir /s /q',
+    'rm -rf': 'rmdir /s /q',
+    'cp': 'copy',
+    'cp -r': 'xcopy /s /e',
+    'mv': 'move',
+    'mkdir -p': 'mkdir',
+    'touch': 'type nul >',
+    'pwd': 'cd',
+    'clear': 'cls',
+    'grep': 'findstr',
+    'find': 'dir /s /b',
+    'head': 'more',
+    'tail': 'more',
+    'chmod': 'echo Windows does not support chmod',
+    'chown': 'echo Windows does not support chown',
+    'which': 'where',
+    'man': 'help',
+    'uname': 'ver',
+    'ps': 'tasklist',
+    'kill': 'taskkill /PID',
+    'df': 'wmic logicaldisk get size,freespace,caption',
+    'du': 'dir /s',
+    'ln': 'mklink',
+    'tar': 'tar',  // Windows 10+ has tar
+    'curl': 'curl', // Windows 10+ has curl
+    'wget': 'curl -O'
+};
+
+// Windows to Unix command translation map
+const WINDOWS_TO_UNIX_COMMANDS = {
+    'dir': 'ls -la',
+    'type': 'cat',
+    'del': 'rm',
+    'copy': 'cp',
+    'move': 'mv',
+    'cls': 'clear',
+    'findstr': 'grep',
+    'where': 'which',
+    'ver': 'uname -a',
+    'tasklist': 'ps aux',
+    'taskkill': 'kill'
+};
+
 // Safe command executor
 const DANGEROUS_COMMANDS = [
     'rm -rf',
@@ -34,6 +88,49 @@ const SAFE_COMMANDS = [
     'git log', 'git branch', 'git diff', 'npm list', 'pip list'
 ];
 
+/**
+ * Translate a command for cross-platform compatibility
+ * @param {string} command - The command to translate
+ * @param {boolean} toWindows - If true, translate Unix->Windows; if false, Windows->Unix
+ * @returns {string|null} - Translated command or null if no translation needed/available
+ */
+function translateCommand(command, toWindows = true) {
+    const translationMap = toWindows ? UNIX_TO_WINDOWS_COMMANDS : WINDOWS_TO_UNIX_COMMANDS;
+    const trimmedCmd = command.trim();
+
+    // Check for exact match first
+    if (translationMap[trimmedCmd]) {
+        return translationMap[trimmedCmd];
+    }
+
+    // Check for command with arguments (match the base command)
+    const parts = trimmedCmd.split(/\s+/);
+    const baseCmd = parts[0];
+    const args = parts.slice(1).join(' ');
+
+    // Try to find a matching base command with flags
+    for (const [unixCmd, winCmd] of Object.entries(translationMap)) {
+        const unixParts = unixCmd.split(/\s+/);
+        const unixBase = unixParts[0];
+
+        if (baseCmd === unixBase) {
+            // Check if the flags match
+            const cmdWithFlags = parts.slice(0, unixParts.length).join(' ');
+            if (translationMap[cmdWithFlags]) {
+                const remainingArgs = parts.slice(unixParts.length).join(' ');
+                return translationMap[cmdWithFlags] + (remainingArgs ? ' ' + remainingArgs : '');
+            }
+
+            // Just translate the base command
+            if (translationMap[unixBase]) {
+                return translationMap[unixBase] + (args ? ' ' + args : '');
+            }
+        }
+    }
+
+    return null;
+}
+
 export function isDangerousCommand(command) {
     const lowerCmd = command.toLowerCase();
     return DANGEROUS_COMMANDS.some(dangerous => lowerCmd.includes(dangerous));
@@ -48,11 +145,24 @@ export async function executeCommand(command, options = {}) {
     const {
         cwd = process.cwd(),
         requireConfirmation = true,
-        timeout = 30000
+        timeout = 30000,
+        _isRetry = false  // Internal flag to prevent infinite retry loops
     } = options;
 
+    const isWindows = process.platform === 'win32';
+
+    // Pre-translate command for the current platform if possible
+    let finalCommand = command;
+    if (!_isRetry) {
+        const translated = translateCommand(command, isWindows);
+        if (translated && translated !== command) {
+            console.log(colors.info(`🔄 Translating: "${command}" → "${translated}" (${isWindows ? 'Windows' : 'Unix'})`));
+            finalCommand = translated;
+        }
+    }
+
     // Check for dangerous commands
-    if (isDangerousCommand(command)) {
+    if (isDangerousCommand(finalCommand)) {
         printWarning('This command appears to be potentially dangerous.');
         const { proceed } = await inquirer.prompt([{
             type: 'confirm',
@@ -67,8 +177,8 @@ export async function executeCommand(command, options = {}) {
     }
 
     // Confirm before running
-    if (requireConfirmation && !isSafeCommand(command)) {
-        printCommand(command);
+    if (requireConfirmation && !isSafeCommand(finalCommand)) {
+        printCommand(finalCommand);
         const { proceed } = await inquirer.prompt([{
             type: 'confirm',
             name: 'proceed',
@@ -81,6 +191,31 @@ export async function executeCommand(command, options = {}) {
         }
     }
 
+    const result = await runCommand(finalCommand, cwd, timeout);
+
+    // If command failed and we haven't retried yet, try translating and retry
+    if (!result.success && !_isRetry) {
+        const translatedCmd = translateCommand(command, isWindows);
+
+        // Check if stderr indicates command not found (common on Windows for Unix commands)
+        const isCommandNotFound = result.stderr?.includes('is not recognized') ||
+            result.stderr?.includes('not found') ||
+            result.stderr?.includes('command not found') ||
+            result.error?.includes('ENOENT');
+
+        if (isCommandNotFound && translatedCmd && translatedCmd !== finalCommand) {
+            console.log(colors.warning(`⚠️ Command not found. Retrying with: "${translatedCmd}"`));
+            return executeCommand(translatedCmd, { ...options, _isRetry: true });
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Internal function to actually run the command
+ */
+function runCommand(command, cwd, timeout) {
     return new Promise((resolve) => {
         const isWindows = process.platform === 'win32';
         const shell = isWindows ? 'cmd' : '/bin/sh';
