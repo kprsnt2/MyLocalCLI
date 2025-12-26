@@ -366,12 +366,47 @@ your-project/
     └── skills/         # Project-specific skills
 ```
 
-## 🛡️ Security Notes
+## 🛡️ Privacy & Security
 
-- **Local providers**: All data stays on your machine
-- **Cloud providers**: Data is sent to the API provider
-- **API keys**: Stored locally in config.json
-- **No telemetry**: We don't collect any usage data
+> ⚠️ **Important Privacy Notice**
+
+### Local Providers (Full Privacy ✅)
+- **LM Studio, Ollama**: All data stays on YOUR machine
+- **No data leaves your computer** - 100% private
+- **Recommended for sensitive code**
+
+### Cloud Providers (Data Shared ⚠️)
+- **OpenRouter, Groq, OpenAI**: Your code/prompts ARE sent to their servers
+- These providers **may log or store your data** per their privacy policies
+- Good for **non-sensitive projects** or trying the tool quickly
+
+### For Maximum Privacy
+
+If you need **full privacy with cloud-grade performance**, run your own model:
+
+```bash
+# Option 1: vLLM (GPU required)
+pip install vllm
+vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8000
+
+# Option 2: Use vLLM with Custom provider in mlc
+mlc init  # Select "Custom" → Enter http://localhost:8000/v1
+```
+
+### Quick Start Links
+
+| Provider | Privacy | Link |
+|----------|---------|------|
+| 🏠 LM Studio | ✅ Full | [lmstudio.ai](https://lmstudio.ai) |
+| 🦙 Ollama | ✅ Full | [ollama.ai](https://ollama.ai) |
+| ⚡ vLLM (Self-hosted) | ✅ Full | [docs.vllm.ai](https://docs.vllm.ai) |
+| 🌐 OpenRouter | ⚠️ Cloud | [openrouter.ai](https://openrouter.ai) |
+| ⚡ Groq | ⚠️ Cloud | [console.groq.com](https://console.groq.com) |
+
+### Security Best Practices
+- **API keys**: Stored locally in `~/.mylocalcli/config.json`
+- **No telemetry**: MyLocalCLI does NOT collect any usage data
+- **Open source**: Audit the code yourself on [GitHub](https://github.com/kprsnt2/MyLocalCLI)
 
 ## 🐛 Troubleshooting
 

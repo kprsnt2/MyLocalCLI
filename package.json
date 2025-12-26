@@ -1,6 +1,6 @@
 {
   "name": "mylocalcli",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with 22 skills, 26 tools, and 5 agents.",
   "main": "src/index.js",
   "type": "module",
@@ -46,7 +46,7 @@
     "type": "git",
     "url": "https://github.com/kprsnt2/MyLocalCLI.git"
   },
-  "homepage": "https://github.com/kprsnt2/MyLocalCLI",
+  "homepage": "https://mlc.kprsnt.in",
   "engines": {
     "node": ">=18.0.0"
   },

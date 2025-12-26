@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [3.2.0] - 2024-12-26
+
+### Added
+- **Privacy Warning** for cloud providers (OpenRouter, Groq, OpenAI)
+- vLLM self-hosting guide for full privacy with cloud-grade performance
+- Quick start links table for all providers with privacy indicators
+
+### Changed
+- Enhanced "Privacy & Security" section in README with detailed warnings
+- Made privacy implications clearer for new users
+
+---
 
 ## [3.1.0] - 2024-12-26
 
