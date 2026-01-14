@@ -7,6 +7,23 @@ import os from 'os';
 import { printInfo, printError, printSuccess, printWarning, colors } from '../ui/terminal.js';
 import { getAllAgents, getAgent, printAgentsList, createAgentContext, loadAgents } from '../agents/agent.js';
 import { getAllSkills, printSkillsList, loadSkills, getSkillContext } from '../skills/skill.js';
+import {
+    getAgentMode,
+    setAgentMode,
+    toggleAgentMode,
+    getPerformanceMode,
+    setPerformanceMode,
+    togglePerformanceMode,
+    printModeStatus,
+    getModeSwitchMessage,
+    AGENT_MODES,
+    PERFORMANCE_MODES
+} from './modes.js';
+import { pinFile, unpinFile, getPinnedFiles, printPinnedFiles, clearPinnedFiles } from './pinning.js';
+import { createBranch, listBranches, loadBranch, printBranchesList, setCurrentBranch, getCurrentBranch } from './branching.js';
+import { detectSubagentMention, getSubagent, getAllSubagents, createSubagentContext, printSubagentsList } from './subagents.js';
+import { initializeProject, getTemplate, getAllTemplates, printTemplatesList } from './templates.js';
+import { createSkillTemplate, searchSkills } from '../skills/skill.js';
 
 // Built-in commands registry
 const BUILTIN_COMMANDS = new Map();
@@ -254,10 +271,22 @@ registerCommand({
     handler: async (args, raw, ctx) => {
         console.log('\n' + colors.primary('━━━ MyLocalCLI Commands ━━━') + '\n');
 
-        console.log(colors.secondary('  NAVIGATION:'));
+        console.log(colors.secondary('  MODES (OpenCode/AmpCode-inspired):'));
+        console.log('    /mode           - Show current modes');
+        console.log('    /build          - Switch to BUILD mode (full access)');
+        console.log('    /plan           - Switch to PLAN mode (read-only)');
+        console.log('    /smart          - Switch to SMART mode (max capability)');
+        console.log('    /rush           - Switch to RUSH mode (fast)');
+
+        console.log(colors.secondary('\n  SHELL MODE:'));
+        console.log('    $ <cmd>         - Run shell command (output in AI context)');
+        console.log('    $$ <cmd>        - Run shell command (incognito mode)');
+
+        console.log(colors.secondary('\n  NAVIGATION:'));
         console.log('    /help, /h       - Show this help');
         console.log('    /exit, /quit    - Exit the chat');
         console.log('    /clear          - Clear conversation history');
+        console.log('    /shortcuts      - Show all keyboard shortcuts');
 
         console.log(colors.secondary('\n  CONFIGURATION:'));
         console.log('    /config         - Show current configuration');
@@ -612,6 +641,361 @@ registerCommand({
     }
 });
 
+// /mode - Show or switch modes
+registerCommand({
+    name: 'mode',
+    aliases: ['modes'],
+    description: 'Show or switch agent/performance modes',
+    argumentHint: '[build|plan|smart|rush]',
+    handler: async (args, raw, ctx) => {
+        if (!args[0]) {
+            printModeStatus();
+            return null;
+        }
+
+        const modeName = args[0].toLowerCase();
+
+        // Try agent modes first
+        if (AGENT_MODES[modeName]) {
+            setAgentMode(modeName);
+            console.log(getModeSwitchMessage(modeName));
+            return null;
+        }
+
+        // Try performance modes
+        if (PERFORMANCE_MODES[modeName]) {
+            setPerformanceMode(modeName);
+            console.log(getModeSwitchMessage(modeName));
+            return null;
+        }
+
+        printError(`Unknown mode: ${modeName}`);
+        printInfo('Available modes: build, plan, smart, rush');
+        return null;
+    }
+});
+
+// /build - Quick switch to build mode
+registerCommand({
+    name: 'build',
+    description: 'Switch to BUILD mode (full access)',
+    handler: async (args, raw, ctx) => {
+        setAgentMode('build');
+        console.log(getModeSwitchMessage('build'));
+        return null;
+    }
+});
+
+// /plan - Quick switch to plan mode
+registerCommand({
+    name: 'plan',
+    description: 'Switch to PLAN mode (read-only)',
+    handler: async (args, raw, ctx) => {
+        setAgentMode('plan');
+        console.log(getModeSwitchMessage('plan'));
+        return null;
+    }
+});
+
+// /smart - Quick switch to smart mode
+registerCommand({
+    name: 'smart',
+    description: 'Switch to SMART mode (max capability)',
+    handler: async (args, raw, ctx) => {
+        setPerformanceMode('smart');
+        console.log(getModeSwitchMessage('smart'));
+        return null;
+    }
+});
+
+// /rush - Quick switch to rush mode
+registerCommand({
+    name: 'rush',
+    description: 'Switch to RUSH mode (fast & efficient)',
+    handler: async (args, raw, ctx) => {
+        setPerformanceMode('rush');
+        console.log(getModeSwitchMessage('rush'));
+        return null;
+    }
+});
+
+// /shortcuts - Show keyboard shortcuts
+registerCommand({
+    name: 'shortcuts',
+    aliases: ['keys', 'keyboard'],
+    description: 'Show keyboard shortcuts',
+    handler: async (args, raw, ctx) => {
+        console.log(`
+${colors.primary('━━━ Keyboard Shortcuts ━━━')}
+
+  ${colors.secondary('Tab')}          Switch between BUILD/PLAN modes
+  ${colors.secondary('Ctrl+C')}       Cancel current operation / Exit
+  ${colors.secondary('↑/↓')}          Navigate input history
+  ${colors.secondary('Tab')}          Auto-complete commands
+
+${colors.primary('━━━ Shell Mode (Quick Commands) ━━━')}
+
+  ${colors.secondary('$ <cmd>')}      Run shell command (output in AI context)
+  ${colors.secondary('$$ <cmd>')}     Run shell command (incognito - not in context)
+
+  Examples:
+    $ npm test      - Run tests, AI sees results
+    $$ git status   - Check status, AI doesn't see it
+
+${colors.primary('━━━ Mode Commands ━━━')}
+
+  ${colors.secondary('/mode')}        Show current modes
+  ${colors.secondary('/build')}       Switch to BUILD mode (full access)
+  ${colors.secondary('/plan')}        Switch to PLAN mode (read-only)
+  ${colors.secondary('/smart')}       Switch to SMART mode (max capability)
+  ${colors.secondary('/rush')}        Switch to RUSH mode (fast)
+`);
+        return null;
+    }
+});
+
+// ========================================
+// CONTEXT PINNING COMMANDS
+// ========================================
+
+// /pin - Pin a file to always include in context
+registerCommand({
+    name: 'pin',
+    description: 'Pin a file to always include in AI context',
+    argumentHint: '<file>',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            printInfo('Usage: /pin <file-path>');
+            printInfo('Example: /pin src/utils.js');
+            return null;
+        }
+
+        const filePath = raw.trim();
+        pinFile(filePath);
+        printSuccess(`📌 Pinned: ${filePath}`);
+        printInfo('This file will always be included in AI context.');
+        return null;
+    }
+});
+
+// /unpin - Unpin a file
+registerCommand({
+    name: 'unpin',
+    description: 'Unpin a file from context',
+    argumentHint: '<file>',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            printInfo('Usage: /unpin <file-path>');
+            printPinnedFiles();
+            return null;
+        }
+
+        const filePath = raw.trim();
+        if (unpinFile(filePath)) {
+            printSuccess(`📌 Unpinned: ${filePath}`);
+        } else {
+            printWarning(`File not pinned: ${filePath}`);
+        }
+        return null;
+    }
+});
+
+// /pins - List pinned files
+registerCommand({
+    name: 'pins',
+    aliases: ['pinned'],
+    description: 'List all pinned files',
+    handler: async (args, raw, ctx) => {
+        printPinnedFiles();
+        return null;
+    }
+});
+
+// ========================================
+// SESSION BRANCHING COMMANDS
+// ========================================
+
+// /branch - Create a new branch
+registerCommand({
+    name: 'branch',
+    description: 'Create a conversation branch',
+    argumentHint: '<name>',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            await printBranchesList(ctx.sessionId);
+            return null;
+        }
+
+        const branchName = raw.trim().replace(/\s+/g, '-');
+        const branch = await createBranch(branchName, ctx.messages, ctx.sessionId);
+        printSuccess(`🌿 Created branch: ${branchName}`);
+        printInfo('Your current conversation was saved to this branch.');
+        return null;
+    }
+});
+
+// /branches - List branches
+registerCommand({
+    name: 'branches',
+    description: 'List conversation branches',
+    handler: async (args, raw, ctx) => {
+        await printBranchesList(ctx.sessionId);
+        return null;
+    }
+});
+
+// /checkout - Switch to a branch
+registerCommand({
+    name: 'checkout',
+    description: 'Switch to a conversation branch',
+    argumentHint: '<name>',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            printInfo('Usage: /checkout <branch-name>');
+            await printBranchesList(ctx.sessionId);
+            return null;
+        }
+
+        const branchName = raw.trim();
+
+        if (branchName === 'main') {
+            ctx.messages.length = 0;
+            setCurrentBranch('main');
+            printSuccess('🌿 Switched to main branch (conversation cleared)');
+            return null;
+        }
+
+        const branch = await loadBranch(branchName, ctx.sessionId);
+        if (branch) {
+            ctx.messages.length = 0;
+            ctx.messages.push(...branch.messages);
+            printSuccess(`🌿 Switched to branch: ${branchName}`);
+            printInfo(`Loaded ${branch.messages.length} messages.`);
+        } else {
+            printError(`Branch not found: ${branchName}`);
+        }
+        return null;
+    }
+});
+
+// ========================================
+// PROJECT TEMPLATE COMMANDS
+// ========================================
+
+// /init - Initialize project with template
+registerCommand({
+    name: 'init',
+    description: 'Initialize project with a template',
+    argumentHint: '[template]',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            printTemplatesList();
+            return null;
+        }
+
+        const templateName = raw.trim();
+        const result = await initializeProject(templateName, ctx.cwd);
+
+        if (result.success) {
+            printSuccess(`${result.template.icon} Initialized ${result.template.name} project!`);
+            printInfo(`Created: MYLOCALCLI.md`);
+            printInfo('The AI will now follow these guidelines for your project.');
+        } else {
+            printError(result.error);
+            printTemplatesList();
+        }
+        return null;
+    }
+});
+
+// /templates - List templates
+registerCommand({
+    name: 'templates',
+    description: 'List available project templates',
+    handler: async (args, raw, ctx) => {
+        printTemplatesList();
+        return null;
+    }
+});
+
+// ========================================
+// SKILL COMMANDS
+// ========================================
+
+// /skill - Skill management
+registerCommand({
+    name: 'skill',
+    description: 'Create or manage custom skills',
+    argumentHint: '<create|search> <name>',
+    handler: async (args, raw, ctx) => {
+        const subcommand = args[0]?.toLowerCase();
+        const skillName = args.slice(1).join('-') || args[1];
+
+        if (!subcommand) {
+            console.log(`
+${colors.primary('━━━ Skill Commands ━━━')}
+
+  ${colors.secondary('/skill create <name>')}  Create a new custom skill
+  ${colors.secondary('/skill search <query>')} Search skills by keyword
+  ${colors.secondary('/skills')}               List all skills
+
+Example:
+  /skill create my-react-tips
+  /skill search testing
+`);
+            return null;
+        }
+
+        if (subcommand === 'create') {
+            if (!skillName) {
+                printInfo('Usage: /skill create <skill-name>');
+                return null;
+            }
+            await createSkillTemplate(skillName, ctx.cwd);
+            printInfo('Edit the SKILL.md file to customize your skill.');
+            return null;
+        }
+
+        if (subcommand === 'search') {
+            const query = args.slice(1).join(' ');
+            if (!query) {
+                printInfo('Usage: /skill search <query>');
+                return null;
+            }
+            await loadSkills(ctx.cwd);
+            const results = searchSkills(query);
+            if (results.length === 0) {
+                printInfo(`No skills found matching: ${query}`);
+            } else {
+                console.log(`\n${colors.primary('Search Results:')}\n`);
+                for (const skill of results) {
+                    console.log(`  ${colors.secondary(skill.name)} - ${colors.muted(skill.description || '')}`);
+                }
+                console.log();
+            }
+            return null;
+        }
+
+        printInfo('Unknown subcommand. Use: create, search');
+        return null;
+    }
+});
+
+// ========================================
+// SUBAGENT COMMANDS
+// ========================================
+
+// /subagents - List subagents
+registerCommand({
+    name: 'subagents',
+    aliases: ['subs'],
+    description: 'List available subagents (@mentions)',
+    handler: async (args, raw, ctx) => {
+        printSubagentsList();
+        return null;
+    }
+});
+
 export default {
     registerCommand,
     registerCustomCommand,
@@ -620,5 +1004,6 @@ export default {
     parseCommand,
     executeCommand,
     loadCustomCommands,
-    parseCommandFile
+    parseCommandFile,
+    detectSubagentMention
 };

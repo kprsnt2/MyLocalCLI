@@ -4,6 +4,64 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [3.3.0] - 2026-01-14
+
+### Added - OpenCode & AmpCode Inspired Features
+
+#### Agent Modes (OpenCode-inspired)
+- **BUILD mode** 🔨 - Full access mode for active development
+- **PLAN mode** 📋 - Read-only mode for safe exploration and code review
+- Type `tab` to toggle between modes instantly
+- Mode indicator in prompt: `[BUILD] You:` or `[PLAN] You:`
+- Automatic tool blocking in PLAN mode (prevents accidental modifications)
+
+#### Performance Modes (AmpCode-inspired)
+- **SMART mode** 🧠 - Maximum capability with best model
+- **RUSH mode** ⚡ - Fast and efficient for quick tasks
+
+#### Shell Mode (AmpCode-inspired)
+- `$ <cmd>` - Execute shell command, output added to AI context
+- `$$ <cmd>` - Incognito mode, output NOT added to context
+- Perfect for quick commands without asking the AI
+
+#### Context Pinning
+- `/pin <file>` - Pin a file to always include in AI context
+- `/unpin <file>` - Remove from pinned files
+- `/pins` - List all pinned files
+
+#### Session Branching
+- `/branch <name>` - Create a conversation branch
+- `/branches` - List all branches
+- `/checkout <name>` - Switch to a branch
+
+#### Project Templates
+- `/init <template>` - Initialize project with predefined config
+- Templates: react, python-api, node, nextjs, express
+
+#### Custom Skills
+- `/skill create <name>` - Create custom skill with wizard
+- `/skill search <query>` - Search skills by keyword
+
+#### Subagents
+- `@oracle` - Complex multi-step searches
+- `@librarian` - Code exploration and documentation
+- `@reviewer` - Automatic code review
+
+#### Mode Commands
+- `/mode`, `/build`, `/plan`, `/smart`, `/rush`, `/shortcuts`
+
+### Changed
+- Updated `/help` command with all new features
+- Enhanced keyboard shortcuts help
+
+### Documentation
+- New "Modes & Shell" documentation page on website
+- Updated sidebar navigation
+
+---
+
+
 ## [3.2.0] - 2024-12-26
 
 ### Added

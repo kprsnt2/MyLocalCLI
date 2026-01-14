@@ -38,6 +38,17 @@ import {
     printDivider,
     colors
 } from '../ui/terminal.js';
+import { renderStatusBar, renderModeSwitchNotification, getInlineStatus } from '../ui/statusbar.js';
+import {
+    getAgentMode,
+    toggleAgentMode,
+    isToolAllowed,
+    printModeStatus,
+    getModeSwitchMessage
+} from './modes.js';
+import { getPinnedContext, getPinnedFiles } from './pinning.js';
+import { detectSubagentMention, createSubagentContext } from './subagents.js';
+import { execSync } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -147,21 +158,78 @@ export async function startChat(options = {}) {
 
     // Show tools info if enabled
     if (enableTools) {
-        printInfo('Tool calling enabled. I can read/write files and run commands.');
+        const mode = getAgentMode();
+        printInfo(`Tool calling enabled. Mode: ${mode.color(mode.displayName)} - ${mode.description}`);
     }
+
+    // Show keyboard shortcuts hint
+    printInfo(`${colors.muted('Tab: switch mode • $ cmd: shell • /help: commands')}`);
 
     // Load custom commands from user directories
     await loadCustomCommands(cwd);
 
+    // Track shell command outputs for context
+    let lastShellOutput = null;
+
     // Main loop
     while (true) {
         try {
+            // Get current mode for display
+            const currentMode = getAgentMode();
+            const modePrefix = currentMode.color(`[${currentMode.displayName}]`);
+
             // Use enhanced input with history and tab completion
-            const input = await promptWithPrefix('You');
+            const input = await promptWithPrefix(`${modePrefix} You`);
 
             const trimmedInput = input.trim();
 
             if (!trimmedInput) continue;
+
+            // Handle Tab key for mode switching (if input is just 'TAB' or empty toggle)
+            if (trimmedInput === '\t' || trimmedInput.toLowerCase() === 'tab') {
+                const newMode = toggleAgentMode();
+                renderModeSwitchNotification(newMode.name, 'agent');
+                continue;
+            }
+
+            // Handle shell mode ($ prefix) - inspired by AmpCode
+            if (trimmedInput.startsWith('$')) {
+                const isIncognito = trimmedInput.startsWith('$$');
+                const shellCmd = isIncognito ? trimmedInput.slice(2).trim() : trimmedInput.slice(1).trim();
+
+                if (shellCmd) {
+                    console.log(colors.muted(`\n  Executing: ${shellCmd}\n`));
+                    try {
+                        const output = execSync(shellCmd, {
+                            cwd,
+                            encoding: 'utf-8',
+                            timeout: 30000,
+                            maxBuffer: 1024 * 1024
+                        });
+                        console.log(colors.secondary(output));
+
+                        // Add to context unless incognito mode
+                        if (!isIncognito) {
+                            lastShellOutput = { command: shellCmd, output: output.slice(0, 2000) };
+                            printInfo('Command output added to AI context');
+                        } else {
+                            printInfo('Incognito mode - output not added to context');
+                        }
+                    } catch (error) {
+                        console.log(colors.error(error.message));
+                        if (!isIncognito) {
+                            lastShellOutput = { command: shellCmd, output: `Error: ${error.message}` };
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Handle /mode command for quick mode switching
+            if (trimmedInput === '/mode' || trimmedInput === '/modes') {
+                printModeStatus();
+                continue;
+            }
 
             // Handle slash commands using the new command system
             if (trimmedInput.startsWith('/')) {
@@ -363,6 +431,14 @@ After I execute the tool, I will tell you the result. Then continue with your ne
                     const toolCalls = parseToolCalls(fullResponse);
 
                     for (const toolCall of toolCalls) {
+                        // Check if tool is allowed in current mode
+                        const currentMode = getAgentMode();
+                        if (!isToolAllowed(toolCall.name)) {
+                            printWarning(`🚫 Tool "${toolCall.name}" blocked - ${currentMode.displayName} mode is read-only`);
+                            printInfo('Switch to BUILD mode (Tab key) to enable file modifications');
+                            continue;
+                        }
+
                         printInfo(`🔧 Tool: ${toolCall.name}`);
                         const result = await executeTool(toolCall.name, toolCall.arguments, cwd);
 

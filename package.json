@@ -1,7 +1,7 @@
 {
   "name": "mylocalcli",
-  "version": "3.2.0",
-  "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with 22 skills, 26 tools, and 5 agents.",
+  "version": "3.3.0",
+  "description": "Your Own AI Coding Assistant - Private, Local, Yours. Claude Code alternative with agent modes, shell mode, 22 skills, 26 tools, and custom plugins.",
   "main": "src/index.js",
   "type": "module",
   "bin": {
