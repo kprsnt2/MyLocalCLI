@@ -1,5 +1,5 @@
 // MyLocalCLI - OpenCode-style TUI (Terminal User Interface)
-// Fully integrated with AI providers
+// World-class terminal interface with professional polish
 
 import readline from 'readline';
 import { getAgentMode, getPerformanceMode, toggleAgentMode, isToolAllowed } from '../core/modes.js';
@@ -15,15 +15,30 @@ const ESC = '\x1b';
 const CSI = `${ESC}[`;
 
 const ansi = {
+    // Cursor control
     hide: `${CSI}?25l`,
     show: `${CSI}?25h`,
     moveTo: (row, col) => `${CSI}${row};${col}H`,
+    savePos: `${CSI}s`,
+    restorePos: `${CSI}u`,
+
+    // Screen control
     clear: `${CSI}2J`,
     clearLine: `${CSI}2K`,
+    clearToEnd: `${CSI}K`,
+    altScreen: `${CSI}?1049h`,
+    mainScreen: `${CSI}?1049l`,
+
+    // Text styles
     reset: `${CSI}0m`,
     bold: `${CSI}1m`,
     dim: `${CSI}2m`,
     italic: `${CSI}3m`,
+    underline: `${CSI}4m`,
+    blink: `${CSI}5m`,
+    inverse: `${CSI}7m`,
+
+    // Foreground colors (256-color support)
     black: `${CSI}30m`,
     red: `${CSI}31m`,
     green: `${CSI}32m`,
@@ -33,18 +48,61 @@ const ansi = {
     cyan: `${CSI}36m`,
     white: `${CSI}37m`,
     gray: `${CSI}90m`,
+    brightRed: `${CSI}91m`,
+    brightGreen: `${CSI}92m`,
+    brightYellow: `${CSI}93m`,
+    brightBlue: `${CSI}94m`,
+    brightMagenta: `${CSI}95m`,
+    brightCyan: `${CSI}96m`,
+    brightWhite: `${CSI}97m`,
+
+    // RGB colors
+    rgb: (r, g, b) => `${CSI}38;2;${r};${g};${b}m`,
+    bgRgb: (r, g, b) => `${CSI}48;2;${r};${g};${b}m`,
+
+    // Background colors
+    bgBlack: `${CSI}40m`,
+    bgRed: `${CSI}41m`,
+    bgGreen: `${CSI}42m`,
+    bgBlue: `${CSI}44m`,
     bgGray: `${CSI}100m`,
 };
 
-const c = (color, text) => `${ansi[color]}${text}${ansi.reset}`;
+// Color palette (modern dark theme)
+const theme = {
+    primary: ansi.rgb(124, 58, 237),      // Purple
+    secondary: ansi.rgb(6, 182, 212),     // Cyan
+    accent: ansi.rgb(236, 72, 153),       // Pink
+    success: ansi.rgb(34, 197, 94),       // Green
+    warning: ansi.rgb(234, 179, 8),       // Yellow
+    error: ansi.rgb(239, 68, 68),         // Red
+    muted: ansi.rgb(100, 116, 139),       // Slate
+    text: ansi.rgb(226, 232, 240),        // Light
+    dim: ansi.rgb(71, 85, 105),           // Dark slate
+    border: ansi.rgb(51, 65, 85),         // Border color
+    highlight: ansi.rgb(30, 41, 59),      // Highlight bg
+};
+
+const c = (color, text) => `${color}${text}${ansi.reset}`;
 const write = (text) => process.stdout.write(text);
 
+// Beautiful ASCII Logo with gradient effect
 const LOGO = [
-    '',
+    '                                                            ',
+    '  ███╗   ███╗██╗   ██╗██╗      ██████╗  ██████╗ █████╗ ██╗  ',
+    '  ████╗ ████║╚██╗ ██╔╝██║     ██╔═══██╗██╔════╝██╔══██╗██║  ',
+    '  ██╔████╔██║ ╚████╔╝ ██║     ██║   ██║██║     ███████║██║  ',
+    '  ██║╚██╔╝██║  ╚██╔╝  ██║     ██║   ██║██║     ██╔══██║██║  ',
+    '  ██║ ╚═╝ ██║   ██║   ███████╗╚██████╔╝╚██████╗██║  ██║███████╗',
+    '  ╚═╝     ╚═╝   ╚═╝   ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝',
+    '                                                            ',
+];
+
+// Smaller logo for compact mode
+const LOGO_COMPACT = [
     '  ╔╦╗╦ ╦╦  ╔═╗╔═╗╔═╗╦  ╔═╗╦  ╦',
     '  ║║║╚╦╝║  ║ ║║  ╠═╣║  ║  ║  ║',
     '  ╩ ╩ ╩ ╩═╝╚═╝╚═╝╩ ╩╩═╝╚═╝╩═╝╩',
-    ''
 ];
 
 const getSize = () => ({
@@ -52,128 +110,247 @@ const getSize = () => ({
     rows: process.stdout.rows || 30
 });
 
-// Draw box with proper borders
-function drawBox(row, col, width, height) {
+// Unicode box characters for premium look
+const box = {
+    tl: '╭', tr: '╮', bl: '╰', br: '╯',
+    h: '─', v: '│',
+    // Double line version
+    dtl: '╔', dtr: '╗', dbl: '╚', dbr: '╝',
+    dh: '═', dv: '║',
+};
+
+// Draw beautiful rounded box
+function drawBox(row, col, width, height, style = 'rounded') {
+    const chars = style === 'double' ?
+        { tl: box.dtl, tr: box.dtr, bl: box.dbl, br: box.dbr, h: box.dh, v: box.dv } :
+        { tl: box.tl, tr: box.tr, bl: box.bl, br: box.br, h: box.h, v: box.v };
+
     write(ansi.moveTo(row, col));
-    write(c('gray', '┌' + '─'.repeat(width - 2) + '┐'));
+    write(c(theme.border, chars.tl + chars.h.repeat(width - 2) + chars.tr));
+
     for (let i = 1; i < height - 1; i++) {
         write(ansi.moveTo(row + i, col));
-        write(c('gray', '│' + ' '.repeat(width - 2) + '│'));
+        write(c(theme.border, chars.v));
+        write(' '.repeat(width - 2));
+        write(c(theme.border, chars.v));
     }
+
     write(ansi.moveTo(row + height - 1, col));
-    write(c('gray', '└' + '─'.repeat(width - 2) + '┘'));
+    write(c(theme.border, chars.bl + chars.h.repeat(width - 2) + chars.br));
 }
 
-// Status bar at bottom
-function drawStatusBar(mode, perfMode, model) {
+// Draw gradient text (simulated with color transitions)
+function drawGradientText(row, col, text, startColor, endColor) {
+    const colors = [
+        ansi.rgb(124, 58, 237),   // Purple
+        ansi.rgb(99, 102, 241),   // Indigo
+        ansi.rgb(59, 130, 246),   // Blue
+        ansi.rgb(6, 182, 212),    // Cyan
+    ];
+
+    write(ansi.moveTo(row, col));
+    const chars = text.split('');
+    chars.forEach((char, i) => {
+        const colorIndex = Math.floor((i / chars.length) * colors.length);
+        write(c(colors[colorIndex], char));
+    });
+}
+
+// Draw status bar with modern styling
+function drawStatusBar(mode, perfMode, model, showThinking = false) {
     const { cols, rows } = getSize();
-    const modeColor = mode === 'build' ? 'green' : 'blue';
-    const perfColor = perfMode === 'smart' ? 'magenta' : 'yellow';
+    const modeIcon = mode === 'build' ? '🔨' : '📋';
+    const perfIcon = perfMode === 'smart' ? '🧠' : '⚡';
 
+    // Background bar
     write(ansi.moveTo(rows, 1));
-    write(ansi.clearLine);
+    write(c(theme.highlight, ' '.repeat(cols)));
 
-    // Center - mode info
-    const centerPos = Math.floor(cols / 2) - 20;
+    // Left section - mode with icon
+    write(ansi.moveTo(rows, 2));
+    if (showThinking) {
+        write(c(theme.warning, '⠋ '));
+        write(c(theme.muted, 'thinking... '));
+    }
+
+    // Center section
+    const centerInfo = `${mode.charAt(0).toUpperCase() + mode.slice(1)}  •  ${model}  •  ${perfMode.charAt(0).toUpperCase() + perfMode.slice(1)}`;
+    const centerPos = Math.floor((cols - centerInfo.length) / 2);
     write(ansi.moveTo(rows, centerPos));
-    write(c('bold', c(modeColor, mode.charAt(0).toUpperCase() + mode.slice(1))));
-    write(c('white', '  ' + model + '  '));
-    write(c(perfColor, perfMode.charAt(0).toUpperCase() + perfMode.slice(1)));
 
-    // Right - hints
-    write(ansi.moveTo(rows, cols - 35));
-    write(c('gray', 'tab '));
-    write(c('white', 'switch mode'));
-    write(c('gray', '  /help '));
-    write(c('white', 'commands'));
+    const modeColor = mode === 'build' ? theme.success : theme.secondary;
+    const perfColor = perfMode === 'smart' ? theme.accent : theme.warning;
 
-    // Version
-    write(ansi.moveTo(rows - 1, cols - 8));
-    write(c('gray', 'v3.3.1'));
+    write(c(ansi.bold, c(modeColor, mode.charAt(0).toUpperCase() + mode.slice(1))));
+    write(c(theme.muted, '  •  '));
+    write(c(theme.text, model));
+    write(c(theme.muted, '  •  '));
+    write(c(ansi.bold, c(perfColor, perfMode.charAt(0).toUpperCase() + perfMode.slice(1))));
+
+    // Right section - shortcuts
+    write(ansi.moveTo(rows, cols - 38));
+    write(c(theme.dim, 'tab '));
+    write(c(theme.text, 'mode'));
+    write(c(theme.dim, '  •  '));
+    write(c(theme.dim, '/help '));
+    write(c(theme.text, 'cmds'));
+    write(c(theme.dim, '  •  '));
+    write(c(theme.dim, 'ctrl+c '));
+    write(c(theme.text, 'exit'));
 }
 
-// Draw title bar
-function drawTitleBar(title, tokens) {
+// Draw title bar with token counter
+function drawTitleBar(title, tokens, cost = 0) {
     const { cols } = getSize();
 
+    // Background
     write(ansi.moveTo(1, 1));
-    write(ansi.clearLine);
-    write(c('bold', c('white', '  # ' + (title || 'New Conversation'))));
+    write(c(theme.highlight, ' '.repeat(cols)));
 
-    write(ansi.moveTo(1, cols - 20));
+    // Title with icon
+    write(ansi.moveTo(1, 3));
+    write(c(theme.primary, '◆ '));
+    write(c(ansi.bold, c(theme.text, title || 'New Conversation')));
+
+    // Token counter on right
     const percent = Math.min(100, Math.floor((tokens / 128000) * 100));
-    write(c('gray', `${tokens.toLocaleString()} `));
-    write(c('green', `${percent}%`));
+    const percentColor = percent < 50 ? theme.success : percent < 80 ? theme.warning : theme.error;
+
+    write(ansi.moveTo(1, cols - 25));
+    write(c(theme.muted, `${tokens.toLocaleString()} tokens `));
+    write(c(percentColor, `${percent}%`));
+    if (cost > 0) {
+        write(c(theme.dim, ` ($${cost.toFixed(4)})`));
+    }
 }
 
-// Draw input box (used in both welcome and chat screens)
+// Draw beautiful input box
 function drawInputBox(row, placeholder, mode, currentInput = '') {
     const { cols } = getSize();
-    const boxWidth = Math.min(cols - 10, 70);
+    const boxWidth = Math.min(cols - 6, 75);
     const boxCol = Math.floor((cols - boxWidth) / 2);
 
-    // Draw the box
-    drawBox(row, boxCol, boxWidth, 4);
+    // Draw rounded box
+    drawBox(row, boxCol, boxWidth, 4, 'rounded');
 
     // Input text or placeholder
-    write(ansi.moveTo(row + 1, boxCol + 2));
+    write(ansi.moveTo(row + 1, boxCol + 3));
     if (currentInput) {
-        write(c('white', currentInput.slice(-(boxWidth - 4))));
+        write(c(theme.text, currentInput.slice(-(boxWidth - 6))));
     } else {
-        write(c('gray', placeholder || 'Ask anything... "Fix broken tests"'));
+        write(c(theme.muted, placeholder || 'Ask anything... "Fix broken tests"'));
     }
 
-    // Mode indicator on second line
-    write(ansi.moveTo(row + 2, boxCol + 2));
-    const modeColor = mode === 'build' ? 'green' : 'blue';
-    write(c('bold', c(modeColor, mode.toUpperCase())));
+    // Mode badge with icon
+    write(ansi.moveTo(row + 2, boxCol + 3));
+    const modeColor = mode === 'build' ? theme.success : theme.secondary;
+    const modeIcon = mode === 'build' ? '🔨' : '📋';
+    write(c(ansi.bold, c(modeColor, mode.toUpperCase())));
+    write(c(theme.dim, '  ← press tab to switch'));
 
-    return { row, boxCol, boxWidth, inputRow: row + 1, inputCol: boxCol + 2 };
+    return { row, boxCol, boxWidth, inputRow: row + 1, inputCol: boxCol + 3 };
 }
 
-// Draw messages in chat view
+// Syntax highlighting for code blocks
+function highlightCode(code, language = '') {
+    // Simple syntax highlighting
+    const keywords = ['function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'return', 'import', 'export', 'class', 'async', 'await', 'try', 'catch'];
+    const types = ['string', 'number', 'boolean', 'Array', 'Object', 'Promise'];
+
+    let result = code;
+
+    // Highlight strings
+    result = result.replace(/(["'`])(?:(?!\1)[^\\]|\\.)*?\1/g, match =>
+        c(theme.success, match)
+    );
+
+    // Highlight keywords
+    keywords.forEach(kw => {
+        const regex = new RegExp(`\\b${kw}\\b`, 'g');
+        result = result.replace(regex, c(theme.accent, kw));
+    });
+
+    // Highlight numbers
+    result = result.replace(/\b\d+\.?\d*\b/g, match =>
+        c(theme.warning, match)
+    );
+
+    return result;
+}
+
+// Draw messages with syntax highlighting
 function drawMessages(messages, startRow, maxRows, cols) {
     let row = startRow;
 
-    // Clear message area first
+    // Clear message area
     for (let r = startRow; r < startRow + maxRows; r++) {
         write(ansi.moveTo(r, 1));
         write(ansi.clearLine);
     }
 
-    // Show last messages that fit
-    const displayMsgs = messages.slice(-8);
+    const displayMsgs = messages.slice(-10);
 
     for (const msg of displayMsgs) {
         if (row >= startRow + maxRows - 2) break;
 
-        write(ansi.moveTo(row, 2));
-
         if (msg.role === 'user') {
-            write(c('cyan', '> '));
-            write(c('white', msg.content.slice(0, cols - 10)));
+            write(ansi.moveTo(row, 3));
+            write(c(theme.secondary, '▶ '));
+            write(c(theme.text, msg.content.slice(0, cols - 10)));
             row++;
         } else if (msg.role === 'tool') {
-            write(c('yellow', '✦ '));
-            write(c('gray', msg.content.slice(0, cols - 10)));
+            write(ansi.moveTo(row, 3));
+            write(c(theme.warning, '⚡ '));
+            write(c(theme.muted, msg.content.slice(0, cols - 10)));
             row++;
         } else {
-            // Assistant - show truncated with proper wrapping
+            // Assistant response with formatting
             const lines = msg.content.split('\n');
-            for (let i = 0; i < Math.min(lines.length, 6) && row < startRow + maxRows - 2; i++) {
-                write(ansi.moveTo(row, 2));
-                write(lines[i].slice(0, cols - 6));
+            let inCodeBlock = false;
+
+            for (let i = 0; i < Math.min(lines.length, 12) && row < startRow + maxRows - 2; i++) {
+                const line = lines[i];
+                write(ansi.moveTo(row, 3));
+
+                // Detect code blocks
+                if (line.startsWith('```')) {
+                    inCodeBlock = !inCodeBlock;
+                    write(c(theme.dim, line.slice(0, cols - 6)));
+                } else if (inCodeBlock) {
+                    write(c(theme.dim, '│ '));
+                    write(highlightCode(line.slice(0, cols - 10)));
+                } else if (line.startsWith('- ') || line.startsWith('* ')) {
+                    write(c(theme.accent, '• '));
+                    write(c(theme.text, line.slice(2, cols - 8)));
+                } else if (line.startsWith('#')) {
+                    write(c(ansi.bold, c(theme.primary, line.slice(0, cols - 6))));
+                } else {
+                    write(c(theme.text, line.slice(0, cols - 6)));
+                }
                 row++;
             }
-            if (lines.length > 6) {
-                write(ansi.moveTo(row, 2));
-                write(c('gray', `  ... (${lines.length - 6} more lines)`));
+
+            if (lines.length > 12) {
+                write(ansi.moveTo(row, 3));
+                write(c(theme.dim, `  ⋮ ${lines.length - 12} more lines`));
                 row++;
             }
         }
+        row++; // Space between messages
     }
 
     return row;
+}
+
+// Animated thinking indicator
+let thinkingFrame = 0;
+const thinkingFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+function drawThinking(row) {
+    write(ansi.moveTo(row, 5));
+    write(c(theme.warning, thinkingFrames[thinkingFrame]));
+    write(c(theme.muted, ' Thinking...'));
+    thinkingFrame = (thinkingFrame + 1) % thinkingFrames.length;
 }
 
 // Main TUI
@@ -185,11 +362,9 @@ export async function startTUI(options = {}) {
 
     try {
         provider = createProvider(providerName);
-    } catch (e) {
-        // Provider might not be configured
-    }
+    } catch (e) { }
 
-    const modelName = getModel(providerName) || 'local-model';
+    const modelName = getModel(providerName) || 'Local Model';
     const sessionId = generateSessionId();
 
     let messages = [];
@@ -198,6 +373,23 @@ export async function startTUI(options = {}) {
     let isProcessing = false;
     let currentScreen = 'welcome';
     let inputBoxInfo = null;
+    let thinkingInterval = null;
+
+    // Switch to alternate screen buffer for clean UI
+    write(ansi.altScreen);
+    write(ansi.hide);
+
+    // Cleanup function
+    function cleanup() {
+        if (thinkingInterval) clearInterval(thinkingInterval);
+        write(ansi.mainScreen);
+        write(ansi.show);
+        process.exit(0);
+    }
+
+    // Handle process exit
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
 
     // Draw welcome screen
     function drawWelcome() {
@@ -206,29 +398,41 @@ export async function startTUI(options = {}) {
 
         write(ansi.clear);
 
-        // Logo centered
-        const logoRow = Math.floor(rows / 3);
-        LOGO.forEach((line, i) => {
-            const col = Math.floor((cols - 32) / 2);
+        // Choose logo based on terminal width
+        const logo = cols >= 70 ? LOGO : LOGO_COMPACT;
+
+        // Draw logo with gradient colors
+        const logoRow = Math.floor(rows / 3) - logo.length / 2;
+        logo.forEach((line, i) => {
+            const col = Math.floor((cols - line.length) / 2);
             write(ansi.moveTo(logoRow + i, col));
-            write(c('cyan', line));
+            drawGradientText(logoRow + i, col, line);
         });
+
+        // Subtitle
+        const subtitle = 'Your Private AI Coding Assistant';
+        write(ansi.moveTo(logoRow + logo.length + 1, Math.floor((cols - subtitle.length) / 2)));
+        write(c(theme.muted, subtitle));
 
         // Input box
         const mode = getAgentMode();
-        const inputRow = logoRow + LOGO.length + 2;
+        const inputRow = logoRow + logo.length + 4;
         inputBoxInfo = drawInputBox(inputRow, 'Ask anything... "Fix broken tests"', mode.name, '');
 
         // Status bar
         const perfMode = getPerformanceMode();
         drawStatusBar(mode.name, perfMode.name, modelName);
 
-        // Position cursor inside the input box
+        // Version badge
+        write(ansi.moveTo(rows - 1, cols - 10));
+        write(c(theme.dim, 'v3.4.0'));
+
+        // Position cursor
         write(ansi.moveTo(inputBoxInfo.inputRow, inputBoxInfo.inputCol));
         write(ansi.show);
     }
 
-    // Draw chat screen with input box at bottom
+    // Draw chat screen
     function drawChat() {
         currentScreen = 'chat';
         const { cols, rows } = getSize();
@@ -250,29 +454,16 @@ export async function startTUI(options = {}) {
 
         // Status bar
         const perfMode = getPerformanceMode();
-        drawStatusBar(mode.name, perfMode.name, modelName);
+        drawStatusBar(mode.name, perfMode.name, modelName, isProcessing);
 
-        // Position cursor inside the input box
+        // Position cursor
         write(ansi.moveTo(inputBoxInfo.inputRow, inputBoxInfo.inputCol));
         write(ansi.show);
     }
 
-    // Show thinking spinner
-    function showThinking() {
-        const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-        let i = 0;
-        const { rows } = getSize();
-        return setInterval(() => {
-            write(ansi.moveTo(rows - 8, 4));
-            write(c('yellow', `${frames[i]} Thinking...   `));
-            i = (i + 1) % frames.length;
-        }, 80);
-    }
-
-    // Handle mode toggle (called when Tab is pressed)
+    // Handle mode toggle
     function handleModeToggle() {
         toggleAgentMode();
-
         if (currentScreen === 'welcome') {
             drawWelcome();
         } else {
@@ -280,94 +471,107 @@ export async function startTUI(options = {}) {
         }
     }
 
-    // Process user input with AI
+    // Process user input
     async function processInput(input) {
         if (!input.trim()) return;
 
-        // Special commands
-        if (input.trim() === '/exit' || input.trim() === '/quit') {
-            write(ansi.clear);
-            write(ansi.moveTo(1, 1));
-            write(ansi.show);
-            process.exit(0);
+        // Commands
+        if (input.trim().startsWith('/')) {
+            const cmd = input.trim().toLowerCase();
+
+            if (cmd === '/exit' || cmd === '/quit' || cmd === '/q') {
+                cleanup();
+                return;
+            }
+
+            if (cmd === '/clear' || cmd === '/new') {
+                messages = [];
+                tokens = 0;
+                title = '';
+                drawWelcome();
+                return;
+            }
+
+            if (cmd === '/help' || cmd === '/h' || cmd === '/?') {
+                messages.push({
+                    role: 'assistant',
+                    content:
+                        `# MyLocalCLI Commands
+
+## Navigation
+- \`/clear\` or \`/new\` - Start new conversation
+- \`/exit\` or \`/quit\` - Exit application
+
+## Modes
+- \`tab\` - Toggle BUILD/PLAN mode
+- \`/mode\` - Show current mode
+
+## Shell
+- \`$ <cmd>\` - Run shell command
+- \`$$ <cmd>\` - Run without AI seeing output
+
+## Tips
+- BUILD mode: Full access to modify files
+- PLAN mode: Read-only, safe exploration`
+                });
+                drawChat();
+                return;
+            }
+
+            if (cmd === '/mode') {
+                const mode = getAgentMode();
+                const perfMode = getPerformanceMode();
+                messages.push({
+                    role: 'assistant',
+                    content: `**Current Modes**\n\n- Agent: ${mode.displayName} ${mode.name === 'build' ? '🔨' : '📋'}\n- Performance: ${perfMode.displayName} ${perfMode.name === 'smart' ? '🧠' : '⚡'}`
+                });
+                drawChat();
+                return;
+            }
         }
 
-        if (input.trim() === '/help') {
-            messages.push({
-                role: 'assistant',
-                content:
-                    'Available Commands:\n' +
-                    '  /exit, /quit - Exit the application\n' +
-                    '  /clear - Clear conversation and start fresh\n' +
-                    '  /mode - Show current mode\n' +
-                    '  $ <cmd> - Run shell command\n' +
-                    '\n' +
-                    'Keyboard Shortcuts:\n' +
-                    '  Tab - Toggle between BUILD and PLAN modes\n' +
-                    '  Ctrl+C - Exit'
-            });
-            drawChat();
-            return;
-        }
-
-        if (input.trim() === '/clear') {
-            messages = [];
-            tokens = 0;
-            title = '';
-            drawWelcome();
-            return;
-        }
-
-        if (input.trim() === '/mode') {
-            const mode = getAgentMode();
-            const perfMode = getPerformanceMode();
-            messages.push({
-                role: 'assistant',
-                content: `Current modes:\n  Agent: ${mode.displayName}\n  Performance: ${perfMode.displayName}`
-            });
-            drawChat();
-            return;
-        }
-
-        // Handle shell commands
+        // Shell commands
         if (input.startsWith('$')) {
             const cmd = input.slice(input.startsWith('$$') ? 2 : 1).trim();
-            messages.push({ role: 'tool', content: `Shell: ${cmd}` });
+            messages.push({ role: 'tool', content: `Running: ${cmd}` });
             drawChat();
             return;
         }
 
-        // Set title from first message
+        // Set title
         if (!title) {
-            title = input.slice(0, 40);
+            title = input.slice(0, 50);
         }
 
         // Add user message
         messages.push({ role: 'user', content: input });
         tokens += input.length;
 
-        try {
-            await saveMessage(sessionId, { role: 'user', content: input });
-        } catch (e) { }
-
         isProcessing = true;
         drawChat();
 
-        const spinner = showThinking();
+        // Start thinking animation
+        const { rows } = getSize();
+        thinkingInterval = setInterval(() => drawThinking(rows - 8), 80);
 
         try {
             if (!provider) {
-                throw new Error('No provider configured. Run: mylocalcli init');
+                throw new Error('No AI provider configured.\n\nRun: mylocalcli init');
             }
 
-            // Build system prompt
-            let systemContent = `You are MyLocalCLI, a helpful AI coding assistant.
+            const mode = getAgentMode();
+            let systemContent = `You are MyLocalCLI, a professional AI coding assistant.
+
 Working directory: ${cwd}
+Current mode: ${mode.displayName}
+${mode.name === 'plan' ? 'READ-ONLY MODE: Do not suggest file modifications.' : ''}
 
-Be concise and helpful. Format code with markdown code blocks.
-The user is in ${getAgentMode().displayName} mode.`;
+Guidelines:
+- Be concise and helpful
+- Use markdown formatting
+- Format code with \`\`\` blocks
+- Use bullet points for lists`;
 
-            // Load project config if available
             try {
                 const projectConfig = await loadProjectConfig(cwd);
                 if (projectConfig) {
@@ -375,60 +579,53 @@ The user is in ${getAgentMode().displayName} mode.`;
                 }
             } catch (e) { }
 
-            // Call AI with streaming
             const messagesWithSystem = [
                 { role: 'system', content: systemContent },
                 ...messages.filter(m => m.role === 'user' || m.role === 'assistant')
             ];
 
             let fullResponse = '';
-
             for await (const chunk of provider.stream(messagesWithSystem, {})) {
                 fullResponse += chunk;
             }
 
-            clearInterval(spinner);
+            clearInterval(thinkingInterval);
+            thinkingInterval = null;
 
-            // Add response
             messages.push({ role: 'assistant', content: fullResponse });
             tokens += fullResponse.length;
 
-            try {
-                await saveMessage(sessionId, { role: 'assistant', content: fullResponse });
-            } catch (e) { }
-
-            // Handle tool calls if any
+            // Handle tool calls
             try {
                 const toolCalls = parseToolCalls(fullResponse);
                 for (const tool of toolCalls) {
-                    const mode = getAgentMode();
                     if (!isToolAllowed(tool.name)) {
-                        messages.push({ role: 'tool', content: `🚫 ${tool.name} blocked in ${mode.displayName} mode` });
+                        messages.push({ role: 'tool', content: `🚫 ${tool.name} blocked in ${mode.displayName}` });
                     } else {
-                        messages.push({ role: 'tool', content: `✦ Running ${tool.name}...` });
+                        messages.push({ role: 'tool', content: `⚡ ${tool.name}` });
                         try {
-                            const result = await executeTool(tool.name, tool.arguments, cwd);
-                            messages.push({ role: 'tool', content: result.success ? `✓ ${tool.name} completed` : `✗ ${tool.name} failed` });
+                            await executeTool(tool.name, tool.arguments, cwd);
+                            messages.push({ role: 'tool', content: `✓ ${tool.name} completed` });
                         } catch (e) {
-                            messages.push({ role: 'tool', content: `✗ ${tool.name} error: ${e.message}` });
+                            messages.push({ role: 'tool', content: `✗ ${tool.name}: ${e.message}` });
                         }
                     }
                 }
             } catch (e) { }
 
         } catch (error) {
-            clearInterval(spinner);
-            messages.push({ role: 'assistant', content: `Error: ${error.message}` });
+            if (thinkingInterval) clearInterval(thinkingInterval);
+            messages.push({ role: 'assistant', content: `**Error**\n\n${error.message}` });
         }
 
         isProcessing = false;
         drawChat();
     }
 
-    // Start the TUI
+    // Start
     drawWelcome();
 
-    // Create readline interface
+    // Setup readline
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -436,7 +633,7 @@ The user is in ${getAgentMode().displayName} mode.`;
         terminal: true
     });
 
-    // Enable keypress events for Tab handling
+    // Keypress handling
     if (process.stdin.isTTY) {
         readline.emitKeypressEvents(process.stdin, rl);
         process.stdin.setRawMode(true);
@@ -444,39 +641,29 @@ The user is in ${getAgentMode().displayName} mode.`;
         process.stdin.on('keypress', (ch, key) => {
             if (!key) return;
 
-            // Handle Tab - toggle mode without affecting input
             if (key.name === 'tab') {
                 handleModeToggle();
                 return;
             }
 
-            // Handle Ctrl+C - exit
             if (key.ctrl && key.name === 'c') {
-                write(ansi.clear);
-                write(ansi.moveTo(1, 1));
-                write(ansi.show);
-                process.exit(0);
+                cleanup();
             }
 
-            // Handle Enter - submit input (readline handles this)
-            // Handle other keys - let readline handle them
+            if (key.ctrl && key.name === 'l') {
+                if (currentScreen === 'welcome') drawWelcome();
+                else drawChat();
+            }
         });
     }
 
-    // Handle line input
     rl.on('line', async (line) => {
         if (!isProcessing) {
             await processInput(line);
         }
     });
 
-    // Handle close
-    rl.on('close', () => {
-        write(ansi.clear);
-        write(ansi.moveTo(1, 1));
-        write(ansi.show);
-        process.exit(0);
-    });
+    rl.on('close', cleanup);
 }
 
 export default { startTUI };

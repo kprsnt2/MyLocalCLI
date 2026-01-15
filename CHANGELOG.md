@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-01-16
+
+### Added - Premium OpenCode-Style TUI
+
+- **Full-Screen TUI** - Alternate screen buffer for clean experience
+- **Beautiful ASCII Logo** - Gradient colors with purple-to-cyan effect
+- **Rounded Unicode Boxes** - Premium `╭─╯` style borders
+- **Syntax Highlighting** - Code blocks with keyword/string coloring
+- **Animated Thinking** - Braille spinner animation while AI processes
+- **Token Counter** - Live token usage with percentage in title bar
+- **Professional Theme** - Modern dark theme with RGB color palette
+- **Markdown Rendering** - Headers, bullets, and code blocks styled
+
+### Changed
+- TUI is now the default interface (use `--classic` for terminal mode)
+- Improved status bar with mode icons and keyboard hints
+- Better error handling and provider detection
+
+---
+
 ## [3.3.0] - 2026-01-14
 
 ### Added - OpenCode & AmpCode Inspired Features
