@@ -111,6 +111,83 @@ const getSize = () => ({
     rows: process.stdout.rows || 30
 });
 
+// Welcome tips - shown randomly on startup
+const WELCOME_TIPS = [
+    '💡 Tip: Type "tab" to switch between BUILD and PLAN modes',
+    '💡 Tip: Use "$ cmd" to run shell commands directly',
+    '💡 Tip: Type "/help" to see all available commands',
+    '💡 Tip: In PLAN mode, file modifications are blocked for safety',
+    '💡 Tip: Use "/clear" to start a fresh conversation',
+    '💡 Tip: Press Ctrl+L to refresh the screen',
+    '💡 Tip: Type "/mode" to see your current modes',
+    '💡 Tip: Use "$$ cmd" for incognito shell (AI won\'t see output)',
+    '💡 Tip: Use "/pin file.js" to always include a file in context',
+    '💡 Tip: Try "@oracle query" to invoke the search subagent',
+    '💡 Tip: Use "/init react" to set up project-specific config',
+];
+
+// Input history for arrow key navigation
+const inputHistory = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
+
+function addToHistory(input) {
+    if (input.trim() && input !== inputHistory[0]) {
+        inputHistory.unshift(input);
+        if (inputHistory.length > MAX_HISTORY) {
+            inputHistory.pop();
+        }
+    }
+    historyIndex = -1;
+}
+
+function getFromHistory(direction) {
+    if (direction === 'up' && historyIndex < inputHistory.length - 1) {
+        historyIndex++;
+        return inputHistory[historyIndex] || '';
+    } else if (direction === 'down' && historyIndex > -1) {
+        historyIndex--;
+        return historyIndex >= 0 ? inputHistory[historyIndex] : '';
+    }
+    return null;
+}
+
+// Context window indicator
+const CONTEXT_LIMIT = 128000; // tokens
+
+function drawContextIndicator(tokens, row, col) {
+    const percent = Math.min(100, Math.floor((tokens / CONTEXT_LIMIT) * 100));
+    const barWidth = 20;
+    const filled = Math.floor((percent / 100) * barWidth);
+
+    // Color based on usage
+    let barColor = theme.success;
+    if (percent > 70) barColor = theme.warning;
+    if (percent > 90) barColor = theme.error;
+
+    write(ansi.moveTo(row, col));
+    write(c(theme.dim, '⟨'));
+    write(c(barColor, '█'.repeat(filled)));
+    write(c(theme.dim, '░'.repeat(barWidth - filled)));
+    write(c(theme.dim, '⟩ '));
+    write(c(barColor, `${percent}%`));
+}
+
+// Progress bar for operations
+function drawProgressBar(row, col, percent, label = '') {
+    const { cols } = getSize();
+    const barWidth = Math.min(40, cols - col - 15);
+    const filled = Math.floor((percent / 100) * barWidth);
+
+    write(ansi.moveTo(row, col));
+    write(c(theme.muted, label + ' '));
+    write(c(theme.dim, '['));
+    write(c(theme.primary, '▓'.repeat(filled)));
+    write(c(theme.dim, '░'.repeat(barWidth - filled)));
+    write(c(theme.dim, '] '));
+    write(c(theme.text, `${percent}%`));
+}
+
 // Unicode box characters for premium look
 const box = {
     tl: '╭', tr: '╮', bl: '╰', br: '╯',
@@ -213,16 +290,12 @@ function drawTitleBar(title, tokens, cost = 0) {
     write(c(theme.primary, '◆ '));
     write(c(ansi.bold, c(theme.text, title || 'New Conversation')));
 
-    // Token counter on right
-    const percent = Math.min(100, Math.floor((tokens / 128000) * 100));
-    const percentColor = percent < 50 ? theme.success : percent < 80 ? theme.warning : theme.error;
+    // Context indicator in center-right
+    drawContextIndicator(tokens, 1, cols - 50);
 
-    write(ansi.moveTo(1, cols - 25));
-    write(c(theme.muted, `${tokens.toLocaleString()} tokens `));
-    write(c(percentColor, `${percent}%`));
-    if (cost > 0) {
-        write(c(theme.dim, ` ($${cost.toFixed(4)})`));
-    }
+    // Token counter on right
+    write(ansi.moveTo(1, cols - 22));
+    write(c(theme.muted, `${tokens.toLocaleString()} tk`));
 }
 
 // Draw beautiful input box
@@ -425,9 +498,14 @@ export async function startTUI(options = {}) {
         write(ansi.moveTo(logoRow + logo.length + 1, Math.floor((cols - subtitle.length) / 2)));
         write(c(theme.muted, subtitle));
 
+        // Welcome tip
+        const tip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)];
+        write(ansi.moveTo(logoRow + logo.length + 3, Math.floor((cols - tip.length) / 2)));
+        write(c(theme.dim, tip));
+
         // Input box
         const mode = getAgentMode();
-        const inputRow = logoRow + logo.length + 4;
+        const inputRow = logoRow + logo.length + 6;
         inputBoxInfo = drawInputBox(inputRow, 'Ask anything... "Fix broken tests"', mode.name, '');
 
         // Status bar
@@ -669,7 +747,8 @@ Guidelines:
     }
 
     rl.on('line', async (line) => {
-        if (!isProcessing) {
+        if (!isProcessing && line.trim()) {
+            addToHistory(line);
             await processInput(line);
         }
     });
