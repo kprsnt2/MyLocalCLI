@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] - 2026-01-16
+
+### Added - TUI Enhancements
+
+- **Welcome Tips** - Random helpful tip shown on startup
+- **Context Window Indicator** - Visual progress bar showing token usage `⟨████░░░░⟩ 32%`
+- **Input History** - Commands saved for future recall
+- **Progress Bar** - Visual progress indicator component
+- **Terminal Title** - Shows "MyLocalCLI" in window title
+- **Resize Handler** - Screen redraws properly when terminal is resized
+
+### Changed
+- Improved title bar with context indicator bar
+- Better positioning of welcome screen elements
+
+---
+
 ## [3.4.0] - 2026-01-16
 
 ### Added - Premium OpenCode-Style TUI
