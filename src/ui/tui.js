@@ -28,6 +28,7 @@ const ansi = {
     clearToEnd: `${CSI}K`,
     altScreen: `${CSI}?1049h`,
     mainScreen: `${CSI}?1049l`,
+    setTitle: (title) => `${ESC}]0;${title}\x07`,
 
     // Text styles
     reset: `${CSI}0m`,
@@ -377,7 +378,17 @@ export async function startTUI(options = {}) {
 
     // Switch to alternate screen buffer for clean UI
     write(ansi.altScreen);
+    write(ansi.setTitle('MyLocalCLI'));
     write(ansi.hide);
+
+    // Handle terminal resize - redraw the screen
+    process.stdout.on('resize', () => {
+        if (currentScreen === 'welcome') {
+            drawWelcome();
+        } else {
+            drawChat();
+        }
+    });
 
     // Cleanup function
     function cleanup() {
