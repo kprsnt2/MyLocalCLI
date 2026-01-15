@@ -58,11 +58,12 @@ program
 // Default command - start chat
 program
     .command('chat', { isDefault: true })
-    .description('Start interactive chat (default)')
+    .description('Start interactive chat (default: OpenCode-style TUI)')
     .option('-p, --provider <provider>', 'Provider to use (lmstudio, ollama, openrouter, openai, groq, custom)')
     .option('-m, --model <model>', 'Model to use')
     .option('--no-tools', 'Disable tool calling')
     .option('-l, --load <sessionId>', 'Load a previous conversation')
+    .option('--classic', 'Use classic terminal mode instead of TUI')
     .action(async (options) => {
         if (options.provider) {
             setProvider(options.provider);
@@ -70,11 +71,22 @@ program
         if (options.model) {
             setModel(getProvider(), options.model);
         }
-        await startChat({
-            cwd: process.cwd(),
-            enableTools: options.tools !== false,
-            loadSession: options.load
-        });
+
+        // Use TUI by default, --classic for old mode
+        if (options.classic) {
+            await startChat({
+                cwd: process.cwd(),
+                enableTools: options.tools !== false,
+                loadSession: options.load
+            });
+        } else {
+            // Use new OpenCode-style TUI
+            const { startTUI } = await import('./ui/tui.js');
+            await startTUI({
+                cwd: process.cwd(),
+                enableTools: options.tools !== false
+            });
+        }
     });
 
 // Initialize/configure command
@@ -492,6 +504,16 @@ program
 
         console.log(chalk.hex('#7C3AED')(`\n  Open your browser to: `) + chalk.hex('#06B6D4')(`http://localhost:${port}\n`));
         console.log(chalk.gray('  Press Ctrl+C to stop the server\n'));
+    });
+
+// TUI command - OpenCode-style full-screen interface
+program
+    .command('tui')
+    .description('Start OpenCode-style full-screen TUI')
+    .action(async () => {
+        const { startTUI } = await import('./ui/tui.js');
+        const provider = getProvider();
+        startTUI({ provider });
     });
 
 // Parse arguments
