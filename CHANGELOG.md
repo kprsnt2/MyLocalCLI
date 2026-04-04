@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.2] - 2026-04-05
+
+### Added - Gemini-Tier Orchestration Features
+- **Parallel Tool Execution Engine** - Completely refactored `chat.js` to dispatch tool calls using `Promise.all`. The AI can now run multiple tools simultaneously (e.g. read 5 files at the same time), ending sequential blocking.
+- **True Standard-IO MCP Bridge** - Swapped the mocked MCP registry with a native Node.js `child_process.spawn`. The CLI now interacts natively with the Model Context Protocol ecosystem via `stdio` JSON-RPC streams.
+- **Multimodal Vision Injection** - Fully autonomous visual debugging natively in chat. Providing a local `.png`, `.webp`, or `.jpg` path in your prompt automatically extracts the image to `base64` for processing with local vision models (Llava) and Cloud providers.
+- **Interactive PLAN Gateways** - Destructive mutations are strictly locked behind manual user validation loops natively via `inquirer`, assuring bullet-proof environment safety.
+
+---
+
+## [4.0.0] - 2026-04-04
+
+### Added - Claw-Code Feature Parity
+- **Background Runtimes** - Re-engineered `teamCronRegistry.js` and `taskRegistry.js` to use persistent `.mylocalcli/crons.json` configurations. Tasks run silently via a local `workerAgent` background loop without blocking the main session.
+- **Dynamic Skills Architecture** - Built `skillsPlugin.js`. AI toolsets are now dynamically injected on boot from `.mylocalcli/skills` JS and Markdown formats, expanding native CLI capabilities.
+- **Advanced AST Validation** - Deep path traversal and permission blocking applied to `executor.js` for enhanced local AI safety rules.
+- **Claude Code Features** - Native integration of Session stores, Prompt Routers, and Transcript Compaction modules.
+
+---
+
 ## [3.4.1] - 2026-01-16
 
 ### Added - TUI Enhancements
