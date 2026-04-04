@@ -537,28 +537,27 @@ After I execute the tool, I will tell you the result. Then continue with your ne
                 if (enableTools) {
                     const toolCalls = parseToolCalls(fullResponse);
 
-                    for (const toolCall of toolCalls) {
-                        // Check permission context first
+                    const toolResults = await Promise.all(toolCalls.map(async (toolCall) => {
                         if (!permissionContext.allows(toolCall.name)) {
                             printWarning(`🚫 Tool "${toolCall.name}" blocked by permission policy`);
                             streamEmitter.emitPermissionDenial(toolCall.name, 'denied by permission context');
                             historyLog.add('permission_denial', toolCall.name);
-                            continue;
+                            return { name: toolCall.name, success: false, error: 'blocked by permissions' };
                         }
 
-                        // Check if tool is allowed in current mode
                         const currentMode = getAgentMode();
                         if (!isToolAllowed(toolCall.name)) {
                             printWarning(`🚫 Tool "${toolCall.name}" blocked - ${currentMode.displayName} mode is read-only`);
-                            printInfo('Switch to BUILD mode (Tab key) to enable file modifications');
                             streamEmitter.emitPermissionDenial(toolCall.name, 'mode restriction');
-                            continue;
+                            return { name: toolCall.name, success: false, error: 'blocked by Read-Only PLAN mode' };
                         }
 
                         streamEmitter.emitToolUse(toolCall.name, toolCall.arguments);
                         const tSpinner = toolSpinner(toolCall.name, toolCall.name);
                         tSpinner.start();
+                        
                         const result = await executeTool(toolCall.name, toolCall.arguments, cwd);
+                        
                         if (result.success) {
                             tSpinner.succeed(`${toolCall.name} done`);
                         } else {
@@ -569,16 +568,25 @@ After I execute the tool, I will tell you the result. Then continue with your ne
                         registry.registerTool(toolCall.name, 'chat');
                         registry.recordToolExecution(toolCall.name, result);
                         historyLog.add('tool_exec', `${toolCall.name} success=${result.success}`);
+                        
+                        return { name: toolCall.name, ...result };
+                    }));
 
-                        if (result.success) {
-                            // Add tool result to messages and continue conversation
-                            const toolResultMsg = `Tool ${toolCall.name} executed successfully.`;
-                            if (result.content) {
-                                messages.push({ role: 'assistant', content: fullResponse });
-                                messages.push({ role: 'user', content: `[Tool Result]\n${result.content.slice(0, 3000)}` });
+                    if (toolResults.length > 0) {
+                        let combinedToolContent = '';
+                        for (const result of toolResults) {
+                            if (result.success && result.content) {
+                                combinedToolContent += `[Tool Result: ${result.name}]\n${result.content.slice(0, 3000)}\n\n`;
+                            } else if (!result.success) {
+                                combinedToolContent += `[Tool Failed: ${result.name}]\n${result.error}\n\n`;
                             }
-                        } else {
-                            printError(`Tool failed: ${result.error}`);
+                        }
+                        if (combinedToolContent) {
+                            // Don't push fullResponse duplicate if it's already there
+                            if (messages[messages.length - 1]?.content !== fullResponse) {
+                                messages.push({ role: 'assistant', content: fullResponse });
+                            }
+                            messages.push({ role: 'user', content: combinedToolContent });
                         }
                     }
                 }

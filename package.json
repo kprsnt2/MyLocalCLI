@@ -1,7 +1,7 @@
 {
   "name": "mylocalcli",
-  "version": "3.4.1",
-  "description": "Your Own AI Coding Assistant - Private, Local, Yours. OpenCode-style TUI with agent modes, context indicator, and 26 tools.",
+  "version": "4.0.2",
+  "description": "An intelligent, local-first AI coding assistant.",
   "main": "src/index.js",
   "type": "module",
   "bin": {

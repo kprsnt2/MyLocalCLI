@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { startChat } from './core/chat.js';
+import { runOneShot } from './core/oneshot.js';
 import { PROVIDERS } from './config/providers.js';
 import {
     getProvider,
@@ -60,17 +61,35 @@ program
 program
     .command('chat', { isDefault: true })
     .description('Start interactive chat (default: OpenCode-style TUI)')
+    .argument('[prompt...]', 'Initial prompt (shorthand execution)')
     .option('-p, --provider <provider>', 'Provider to use (lmstudio, ollama, openrouter, openai, groq, nvidia, custom)')
     .option('-m, --model <model>', 'Model to use')
     .option('--no-tools', 'Disable tool calling')
     .option('-l, --load <sessionId>', 'Load a previous conversation')
     .option('--classic', 'Use classic terminal mode instead of TUI')
-    .action(async (options) => {
+    .option('--output-format <format>', 'Output format (e.g., json)')
+    .option('--permission-mode <mode>', 'Permission mode (e.g., read-only)')
+    .option('--allowedTools <tools>', 'Comma-separated list of allowed tools')
+    .action(async (promptParts, options) => {
         if (options.provider) {
             setProvider(options.provider);
         }
         if (options.model) {
             setModel(getProvider(), options.model);
+        }
+
+        const prompt = promptParts && promptParts.length > 0 ? promptParts.join(' ') : null;
+
+        if (prompt || options.outputFormat === 'json') {
+            await runOneShot(prompt || '', {
+                cwd: process.cwd(),
+                enableTools: options.tools !== false,
+                outputFormat: options.outputFormat,
+                permissionMode: options.permissionMode,
+                allowedTools: options.allowedTools,
+                provider: options.provider || getProvider()
+            });
+            return;
         }
 
         // Use TUI by default, --classic for old mode
@@ -88,6 +107,35 @@ program
                 enableTools: options.tools !== false
             });
         }
+    });
+
+// Explicit prompt command equivalent to shorthand
+program
+    .command('prompt <prompt...>')
+    .description('Execute a single prompt and exit')
+    .option('-p, --provider <provider>', 'Provider to use')
+    .option('-m, --model <model>', 'Model to use')
+    .option('--no-tools', 'Disable tool calling')
+    .option('--output-format <format>', 'Output format (e.g., json)')
+    .option('--permission-mode <mode>', 'Permission mode (e.g., read-only)')
+    .option('--allowedTools <tools>', 'Comma-separated list of allowed tools')
+    .action(async (promptParts, options) => {
+        if (options.provider) {
+            setProvider(options.provider);
+        }
+        if (options.model) {
+            setModel(getProvider(), options.model);
+        }
+
+        const prompt = promptParts.join(' ');
+        await runOneShot(prompt, {
+            cwd: process.cwd(),
+            enableTools: options.tools !== false,
+            outputFormat: options.outputFormat,
+            permissionMode: options.permissionMode,
+            allowedTools: options.allowedTools,
+            provider: options.provider || getProvider()
+        });
     });
 
 // Initialize/configure command

@@ -78,15 +78,55 @@ const DANGEROUS_COMMANDS = [
     'shutdown',
     'reboot',
     'kill -9',
-    'killall'
+    'killall',
+    'history -c', // Prevent clearing history
+    'iptables -F', // Prevent wiping firewall rules
+    'chown -R', // Prevent taking ownership of entire trees
+    'chroot', // Prevent jailbreaking
+    '> /etc/', // Prevent system overrides
+    'mkfs.ext4',
+    'rm -f /' // Prevent root nuke
 ];
 
 const SAFE_COMMANDS = [
     'ls', 'dir', 'pwd', 'cd', 'echo', 'cat', 'type', 'head', 'tail',
     'grep', 'find', 'which', 'where', 'whoami', 'date', 'env',
     'node --version', 'npm --version', 'python --version', 'git status',
-    'git log', 'git branch', 'git diff', 'npm list', 'pip list'
+    'git log', 'git branch', 'git diff', 'npm list', 'pip list',
+    'which', 'jq'
 ];
+
+/**
+ * Validates sed commands to prevent destructive regex execution
+ */
+export function validateSed(command) {
+    if (!command.includes('sed -i')) return true;
+    // Disallow empty replacements which might wipe files
+    if (command.match(/s\/.+\/\//)) return false;
+    return true;
+}
+
+export function isReadOnlyCompliant(command) {
+    const mutatingTerms = [
+        '>', '>>', 'rm', 'mkdir', 'touch', 'mv', 'cp', 
+        'git commit', 'git push', 'git reset', 'git clean',
+        'pip install', 'npm install', 'yarn install', 'pnpm install', 'cargo build', 'cargo run',
+        'chmod', 'chown', 'wget', 'curl -O', 'tar -x', 'zip', 'unzip', 'gzip',
+        'sed -i', 'awk -i', 'python -c', 'node -e'
+    ];
+    const lowerCmd = command.toLowerCase();
+    
+    // Check for obvious mutators
+    const violatesMode = mutatingTerms.some(term => {
+        const regex = new RegExp(term === '>' || term === '>>' ? `\\s${term}\\s` : `\\b${term}\\b`);
+        return regex.test(lowerCmd);
+    });
+
+    // Check for path traversal escaping the workspace (security enhancement from PARITY)
+    const hasTraversal = command.includes('../..') || command.match(/(?:\.\.\/){3,}/);
+
+    return !violatesMode && !hasTraversal;
+}
 
 /**
  * Translate a command for cross-platform compatibility
@@ -133,6 +173,16 @@ function translateCommand(command, toWindows = true) {
 
 export function isDangerousCommand(command) {
     const lowerCmd = command.toLowerCase();
+    
+    // Check specific path destructors and traversal bounds
+    if (lowerCmd.match(/rm\s+-rf\s+(\/|~\/|\.\.\/)/)) return true;
+    if (lowerCmd.match(/mv\s+.*?\s+\/dev\/null/)) return true;
+    
+    // Out of bounded escapes
+    if (lowerCmd.includes('../../../')) return true;
+    
+    if (!validateSed(command)) return true;
+
     return DANGEROUS_COMMANDS.some(dangerous => lowerCmd.includes(dangerous));
 }
 
@@ -146,8 +196,13 @@ export async function executeCommand(command, options = {}) {
         cwd = process.cwd(),
         requireConfirmation = true,
         timeout = 30000,
+        permissionMode = 'full', // 'readonly', 'workspace-write', 'full'
         _isRetry = false  // Internal flag to prevent infinite retry loops
     } = options;
+
+    if (permissionMode === 'readonly' && !isReadOnlyCompliant(command)) {
+        return { success: false, error: 'Command blocked: Not compliant with read-only permission mode' };
+    }
 
     const isWindows = process.platform === 'win32';
 

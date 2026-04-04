@@ -6,7 +6,11 @@ import inquirer from 'inquirer';
 import path from 'path';
 import fs from 'fs/promises';
 import { execSync } from 'child_process';
-
+import { taskRegistry } from './taskRegistry.js';
+import { teamRegistry, cronRegistry } from './teamCronRegistry.js';
+import { mcpRegistry } from './mcpToolBridge.js';
+import { lspClient } from './lspClient.js';
+import { loadSkills, activeSkills } from './skillsPlugin.js';
 // Enhanced tool definitions for AI agents - Claude Code style
 export const TOOLS = [
     {
@@ -660,6 +664,39 @@ export const TOOLS = [
                 },
                 required: ['action']
             }
+        }
+    },
+    // Registry Tools
+    {
+        type: 'function',
+        function: {
+            name: 'TaskCreate',
+            description: 'Create a background task.',
+            parameters: { type: 'object', properties: { instruction: { type: 'string' } }, required: ['instruction'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'TaskList',
+            description: 'List all tasks.',
+            parameters: { type: 'object', properties: {}, required: [] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'ListMcpResources',
+            description: 'List active MCP server resources.',
+            parameters: { type: 'object', properties: {}, required: [] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'LspGetSymbols',
+            description: 'Get LSP symbols.',
+            parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }
         }
     }
 ];
@@ -1625,8 +1662,48 @@ export async function executeTool(toolName, args, cwd, options = {}) {
             } catch (e) { return { success: false, error: e.message }; }
         }
 
+        case 'TaskCreate': {
+            try {
+                const task = taskRegistry.createTask(args.instruction);
+                printSuccess(`Task created: ${task.id}`);
+                return { success: true, content: `Task created with ID ${task.id}` };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'TaskList': {
+            try {
+                const tasks = taskRegistry.listTasks();
+                return { success: true, content: JSON.stringify(tasks, null, 2) };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'ListMcpResources': {
+            try {
+                const res = mcpRegistry.listResources();
+                return { success: true, content: JSON.stringify(res, null, 2) };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'LspGetSymbols': {
+            try {
+                const res = await lspClient.getSymbols(args.query);
+                return { success: true, content: JSON.stringify(res, null, 2) };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
         default:
+            if (activeSkills.has(toolName)) {
+                return await activeSkills.get(toolName).execute(args);
+            }
             return { success: false, error: `Unknown tool: ${toolName}` };
+    }
+}
+
+export async function initializeSkills() {
+    const skills = await loadSkills();
+    for (const skill of skills) {
+        TOOLS.push(skill);
+        activeSkills.set(skill.function.name, skill);
     }
 }
 
@@ -1776,4 +1853,4 @@ export function parseToolCalls(response) {
     return toolCalls;
 }
 
-export default { TOOLS, executeTool, parseToolCalls };
+export default { TOOLS, executeTool, parseToolCalls, initializeSkills };

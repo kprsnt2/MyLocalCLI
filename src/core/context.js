@@ -1,5 +1,6 @@
 import path from 'path';
 import { listDirectory, searchFiles, readFile, getFileExtension, getLanguageFromExtension } from '../utils/files.js';
+import fs from 'fs/promises';
 import { isGitRepo, getGitInfo } from '../utils/git.js';
 
 // Codebase context builder
@@ -109,9 +110,27 @@ export async function getRelevantContext(cwd, query) {
         }
     }
 
+    const imageMatch = query.match(/\b[\w:\\/-]+\.(png|jpg|jpeg|gif|webp)\b/gi);
+    const images = [];
+    if (imageMatch) {
+        for (const imgName of imageMatch) {
+            const basename = path.basename(imgName);
+            const imgFiles = await searchFiles(`**/${basename}`, cwd);
+            if (imgFiles.length > 0) {
+                try {
+                    const imgPath = imgFiles[0];
+                    const buffer = await fs.readFile(imgPath);
+                    const ext = imgPath.split('.').pop().toLowerCase().replace('jpg', 'jpeg');
+                    images.push({ path: imgPath, mimeType: 'image/' + ext, data: buffer.toString('base64') });
+                } catch(e) {}
+            }
+        }
+    }
+
     return {
         ...context,
-        relevantFiles: fileContents
+        relevantFiles: fileContents,
+        images
     };
 }
 

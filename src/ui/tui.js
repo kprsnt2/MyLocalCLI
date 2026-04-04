@@ -5,10 +5,11 @@ import readline from 'readline';
 import { getAgentMode, getPerformanceMode, toggleAgentMode, isToolAllowed } from '../core/modes.js';
 import { getProvider, getModel, getApiKey, getBaseUrl } from '../config/settings.js';
 import { createProvider } from '../core/chat.js';
-import { TOOLS, executeTool, parseToolCalls } from '../core/tools.js';
+import { TOOLS, executeTool, parseToolCalls, initializeSkills } from '../core/tools.js';
 import { getRelevantContext, formatContextForPrompt } from '../core/context.js';
 import { loadProjectConfig, formatProjectConfigForPrompt } from '../config/project.js';
 import { saveMessage, generateSessionId } from '../utils/history.js';
+import { commandRegistry } from '../core/commandRegistry.js';
 
 // ANSI escape codes
 const ESC = '\x1b';
@@ -429,6 +430,7 @@ function drawThinking(row) {
 
 // Main TUI
 export async function startTUI(options = {}) {
+    await initializeSkills();
     const { cols, rows } = getSize();
     const cwd = options.cwd || process.cwd();
     const providerName = getProvider();
@@ -566,57 +568,20 @@ export async function startTUI(options = {}) {
 
         // Commands
         if (input.trim().startsWith('/')) {
-            const cmd = input.trim().toLowerCase();
-
-            if (cmd === '/exit' || cmd === '/quit' || cmd === '/q') {
+            const context = { messages, tokens, title, drawWelcome, drawChat, cleanup };
+            const result = await commandRegistry.execute(input, context);
+            
+            if (result.action === 'exit') {
                 cleanup();
-                return;
-            }
-
-            if (cmd === '/clear' || cmd === '/new') {
-                messages = [];
+            } else if (result.action === 'clearChat') {
+                messages.length = 0; // Clear the array in place if possible, or trigger clean
                 tokens = 0;
                 title = '';
                 drawWelcome();
-                return;
-            }
-
-            if (cmd === '/help' || cmd === '/h' || cmd === '/?') {
-                messages.push({
-                    role: 'assistant',
-                    content:
-                        `# MyLocalCLI Commands
-
-## Navigation
-- \`/clear\` or \`/new\` - Start new conversation
-- \`/exit\` or \`/quit\` - Exit application
-
-## Modes
-- \`tab\` - Toggle BUILD/PLAN mode
-- \`/mode\` - Show current mode
-
-## Shell
-- \`$ <cmd>\` - Run shell command
-- \`$$ <cmd>\` - Run without AI seeing output
-
-## Tips
-- BUILD mode: Full access to modify files
-- PLAN mode: Read-only, safe exploration`
-                });
+            } else if (result.action === 'drawChat') {
                 drawChat();
-                return;
             }
-
-            if (cmd === '/mode') {
-                const mode = getAgentMode();
-                const perfMode = getPerformanceMode();
-                messages.push({
-                    role: 'assistant',
-                    content: `**Current Modes**\n\n- Agent: ${mode.displayName} ${mode.name === 'build' ? '🔨' : '📋'}\n- Performance: ${perfMode.displayName} ${perfMode.name === 'smart' ? '🧠' : '⚡'}`
-                });
-                drawChat();
-                return;
-            }
+            return;
         }
 
         // Shell commands
