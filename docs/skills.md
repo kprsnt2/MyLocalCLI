@@ -1,6 +1,8 @@
-# Skills System
+# Skills & Dynamic Plugin System
 
 Skills are knowledge packs that automatically inject best practices into your AI conversations based on the files in your project.
+
+As of **v4.0.0**, MyLocalCLI implements a **Dynamic Skills Architecture**. Instead of hardcoding tools, you can dynamically expand the AI's physical capabilities by dropping plugins into the skills folder.
 
 ## How Skills Work
 
@@ -141,6 +143,14 @@ globs: [
   "!**/node_modules/**" # Exclude node_modules
 ]
 ```
+
+---
+
+## 🧩 Dynamic Javascript Plugins (v4.0+)
+
+Beyond Markdown files holding context, you can now add actual JavaScript files into `.mylocalcli/skills/` to provide the LLM with entirely new executable commands, matching the Claw-Code workflow scale!
+
+At boot time, `src/core/skillsPlugin.js` natively registers these JS modules as executable functions directly available through the standard tool dispatch chain.
 
 ## Skill Locations
 

@@ -1,8 +1,17 @@
-# Agents Guide
+# Agents Guide & Background Runtimes
 
 Agents are specialized AI personas designed for specific tasks. They have focused prompts and behaviors.
 
-## Available Agents (5)
+As of **v4.0.2**, MyLocalCLI implements powerful **Background Runtimes** and headless LLM orchestrators that mirror Claw-Code and Gemini's architecture.
+
+## 🧠 Background Runtimes (v4.0)
+
+MyLocalCLI now features non-blocking, headless LLMs traversing your codebase behind the scenes. 
+
+- **Task Registry & `workerAgent`**: Complex task execution is decoupled from your standard UI session via `src/core/taskRegistry.js`. Background loops run tasks quietly while you continue to build using persistent local json ledgers.
+- **Team Crons**: Agents can be set up in `teamCronRegistry.js` to trigger automatically via `setInterval`. You can easily have an agent poll for syntax errors every 60 seconds without freezing your interface.
+
+## Available Built-in Agents (5)
 
 ### 1. code-reviewer
 
@@ -136,7 +145,8 @@ mlc
 3. **Chain agents**: Use explorer first, then reviewer
 4. **Combine with tools**: Agents can use all 26 tools
 
-## Custom Agents (Coming Soon)
+## Custom Agents & Background Tasks
 
-Future versions will support custom agent definitions in:
-- `.mylocalcli/agents/<name>.md`
+You can natively add autonomous task workers and background crons using the persistent JSON ledgers:
+- `.mylocalcli/tasks.json`
+- `.mylocalcli/crons.json`

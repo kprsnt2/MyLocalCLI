@@ -1,6 +1,10 @@
 # Tools Reference
 
-MyLocalCLI provides 26 tools that the AI can use to help you with coding tasks.
+MyLocalCLI provides dozens of tools that the AI can use to help you with coding tasks.
+
+## ⚡ Parallel Tool Execution (v4.0.2)
+
+As of version 4.0.2, the LLM orchestrator executes operations concurrently through Promise array loops. Instead of waiting sequentially, the CLI will spawn parallel streams to process massive tool payloads instantly, providing bleeding-edge response times equivalent to the Gemini-Cloud suite.
 
 ## Overview
 
@@ -9,6 +13,8 @@ Tools are actions the AI can take automatically:
 - Searching code
 - Running commands
 - Managing git
+- Analyzing Base64 Images natively
+- Binding Standard-IO Model Context Protocols
 
 When you ask the AI to do something, it selects the appropriate tools.
 
@@ -249,6 +255,10 @@ AI uses: todo_write([
   { id: "2", content: "Add tests", status: "done", priority: "medium" }
 ])
 ```
+
+## 🔌 Model Context Protocol (v4.0.2+)
+
+MyLocalCLI natively ships with a **Standard-IO MCP Sub-Server Bridge** (`mcpToolBridge.js`). You can bind any open-source Model Context Protocol directly into the Tool Dispatch registry system. This enables LLM interaction with remote Postgres instances, web-scraping clusters, and more, seamlessly!
 
 ## User Interaction
 
