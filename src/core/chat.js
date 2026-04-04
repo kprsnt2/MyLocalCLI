@@ -4,6 +4,7 @@ import { LMStudioProvider } from '../providers/lmstudio.js';
 import { OllamaProvider } from '../providers/ollama.js';
 import { OpenAIProvider } from '../providers/openai.js';
 import { OpenRouterProvider } from '../providers/openrouter.js';
+import { NvidiaProvider } from '../providers/nvidia.js';
 import { getProvider, getApiKey, getModel, getBaseUrl } from '../config/settings.js';
 import { PROVIDERS } from '../config/providers.js';
 import { loadProjectConfig, formatProjectConfigForPrompt } from '../config/project.js';
@@ -48,6 +49,14 @@ import {
 } from './modes.js';
 import { getPinnedContext, getPinnedFiles } from './pinning.js';
 import { detectSubagentMention, createSubagentContext } from './subagents.js';
+import { CostTracker, estimateCost } from './costTracker.js';
+import { ToolPermissionContext } from './permissions.js';
+import { TranscriptStore } from './transcript.js';
+import { PromptRouter } from './router.js';
+import { getRegistry } from './registry.js';
+import { getStreamEmitter } from './streamEvents.js';
+import { HistoryLog } from './historyLog.js';
+import { animatedStartup, toolSpinner, animatedSessionSummary, animatedModeSwitch, getToolIcon } from '../ui/animations.js';
 import { execSync } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
@@ -65,6 +74,8 @@ export function createProvider(providerName) {
             return new OllamaProvider({ baseUrl, model });
         case 'openrouter':
             return new OpenRouterProvider({ apiKey, model });
+        case 'nvidia':
+            return new NvidiaProvider({ apiKey, model, baseUrl });
         case 'openai':
         case 'groq':
             return new OpenAIProvider({ apiKey, model, baseUrl });
@@ -85,8 +96,8 @@ export async function startChat(options = {}) {
     const providerName = getProvider();
     const provider = createProvider(providerName);
 
-    // Print welcome
-    printLogo();
+    // Animated startup
+    await animatedStartup({ fast: !!options.loadSession });
     printWelcome(PROVIDERS[providerName]?.name || providerName, getModel(providerName));
 
     // Check if provider is available
@@ -133,7 +144,28 @@ export async function startChat(options = {}) {
             return;
         }
         printSuccess('Using Groq');
+    } else if (providerName === 'nvidia') {
+        const apiKey = getApiKey('nvidia');
+        if (!apiKey) {
+            printError('NVIDIA API key not set!');
+            printInfo('Get your key at: https://build.nvidia.com');
+            printInfo('Then run: mylocalcli config --provider nvidia --key YOUR_API_KEY');
+            return;
+        }
+        printSuccess('Using NVIDIA API');
     }
+
+    // Claude Code features - session tracking
+    const costTracker = new CostTracker();
+    const transcript = new TranscriptStore();
+    const permissionContext = new ToolPermissionContext();
+    const historyLog = new HistoryLog();
+    const streamEmitter = getStreamEmitter();
+    const registry = getRegistry();
+    const router = new PromptRouter();
+
+    historyLog.add('session_start', `provider=${providerName} model=${getModel(providerName)}`);
+    streamEmitter.emitMessageStart(sessionId, 'Session initialized');
 
     // Conversation history
     let messages = [];
@@ -188,7 +220,7 @@ export async function startChat(options = {}) {
             // Handle Tab key for mode switching (if input is just 'TAB' or empty toggle)
             if (trimmedInput === '\t' || trimmedInput.toLowerCase() === 'tab') {
                 const newMode = toggleAgentMode();
-                renderModeSwitchNotification(newMode.name, 'agent');
+                await animatedModeSwitch(newMode.name, 'agent');
                 continue;
             }
 
@@ -246,7 +278,14 @@ export async function startChat(options = {}) {
                     listConversations,
                     loadConversation,
                     renameConversation,
-                    exportConversation
+                    exportConversation,
+                    costTracker,
+                    transcript,
+                    permissionContext,
+                    historyLog,
+                    streamEmitter,
+                    registry,
+                    router
                 };
 
                 const { handled, exit, result } = await executeCommand(trimmedInput, commandCtx);
@@ -267,6 +306,13 @@ export async function startChat(options = {}) {
                 // Regular user message
                 messages.push({ role: 'user', content: trimmedInput });
                 await saveMessage(sessionId, { role: 'user', content: trimmedInput });
+                transcript.append({ role: 'user', content: trimmedInput });
+
+                // Route prompt to suggest matching tools
+                const routeMatches = router.routePrompt(trimmedInput, 3);
+                if (routeMatches.length > 0) {
+                    historyLog.add('routing', `matches=${routeMatches.length} for prompt`);
+                }
             }
 
             // Get context
@@ -321,13 +367,14 @@ You have access to tools to interact with files, run commands, and more.
 3. Wait for my response after each tool call before continuing
 4. Do NOT add any text inside the JSON code block - only the JSON object
 
-## AVAILABLE TOOLS (26)
+## AVAILABLE TOOLS (42)
 
 FILE TOOLS:
 - write_file(path, content) - Create or overwrite a file
 - read_file(path) - Read file contents
 - edit_file(path, old_content, new_content) - Replace text in file
 - multi_edit_file(path, edits[]) - Multiple replacements at once
+- patch_file(path, patch) - Apply a unified diff patch
 - append_file(path, content) - Add content to end of file
 - delete_file(path) - Delete a file
 - copy_file(source, destination) - Copy file
@@ -340,12 +387,14 @@ DIRECTORY TOOLS:
 - list_directory(path) - List files and folders
 - create_directory(path) - Create directory
 - tree(path, depth) - Show directory tree
+- batch_rename(directory, find, replace, dry_run) - Rename files by pattern
 
 SEARCH TOOLS:
 - search_files(pattern) - Find files by glob pattern
 - grep(pattern, path, include) - Search text in files
 - find_replace(find, replace, path) - Find and replace text
 - codebase_search(query) - Semantic code search
+- compare_files(file_a, file_b) - Diff two files
 
 COMMAND TOOLS:
 - run_command(command) - Execute shell command
@@ -355,11 +404,30 @@ GIT TOOLS:
 - git_diff(staged) - Get git diff
 - git_log(count) - Show commit history
 - git_commit(message) - Create commit
+- git_branch(action, name) - Create/list/switch/delete branches
+- git_stash(action, message) - Save/pop/list/drop stashed changes
 
-OTHER TOOLS:
+WEB & HTTP TOOLS:
 - web_fetch(url) - Fetch URL content
+- http_request(url, method, headers, body) - Full HTTP client (GET/POST/PUT/DELETE)
+
+PROJECT TOOLS:
+- test_run(command, filter) - Auto-detect and run project tests
+- lint_check(fix) - Run project linter
+- dependency_check(audit) - Check dependencies and vulnerabilities
+- project_stats(path) - Lines of code and file counts by language
+
+DATA & UTILITY TOOLS:
+- json_query(path, query) - Query JSON files by dot-notation path
+- regex_test(pattern, text, flags) - Test regex and return matches
+- hash_file(path, algorithm) - Compute MD5/SHA-256 hash
+- port_check(port) - Check if a port is in use
+- memory_store(action, key, value) - Session key-value storage (set/get/list/delete)
+
+WORKFLOW TOOLS:
 - todo_write(todos[]) - Manage task list
 - ask_user(question, options) - Ask user a question
+- notebook(name, action, content) - Create/manage markdown notebooks
 
 ## EXAMPLES
 
@@ -390,6 +458,36 @@ To run a command:
   "tool": "run_command",
   "arguments": {
     "command": "npm install"
+  }
+}
+\`\`\`
+
+To run tests:
+\`\`\`json
+{
+  "tool": "test_run",
+  "arguments": {}
+}
+\`\`\`
+
+To query a JSON file:
+\`\`\`json
+{
+  "tool": "json_query",
+  "arguments": {
+    "path": "package.json",
+    "query": "dependencies"
+  }
+}
+\`\`\`
+
+To make an HTTP request:
+\`\`\`json
+{
+  "tool": "http_request",
+  "arguments": {
+    "url": "https://api.example.com/data",
+    "method": "GET"
   }
 }
 \`\`\`
@@ -426,21 +524,51 @@ After I execute the tool, I will tell you the result. Then continue with your ne
 
                 printAssistantEnd();
 
+                // Track cost (estimate based on response length)
+                const inputTokenEstimate = messages.reduce((sum, m) => sum + (m.content?.length || 0) / 4, 0);
+                const outputTokenEstimate = Math.ceil(fullResponse.length / 4);
+                const model = getModel(providerName);
+                const cost = estimateCost(model, inputTokenEstimate, outputTokenEstimate);
+                costTracker.record('chat', inputTokenEstimate, outputTokenEstimate, cost);
+                streamEmitter.emitCostUpdate(costTracker.summary);
+                historyLog.add('response', `tokens_out=${outputTokenEstimate} cost=$${cost.toFixed(4)}`);
+
                 // Check for tool calls
                 if (enableTools) {
                     const toolCalls = parseToolCalls(fullResponse);
 
                     for (const toolCall of toolCalls) {
+                        // Check permission context first
+                        if (!permissionContext.allows(toolCall.name)) {
+                            printWarning(`🚫 Tool "${toolCall.name}" blocked by permission policy`);
+                            streamEmitter.emitPermissionDenial(toolCall.name, 'denied by permission context');
+                            historyLog.add('permission_denial', toolCall.name);
+                            continue;
+                        }
+
                         // Check if tool is allowed in current mode
                         const currentMode = getAgentMode();
                         if (!isToolAllowed(toolCall.name)) {
                             printWarning(`🚫 Tool "${toolCall.name}" blocked - ${currentMode.displayName} mode is read-only`);
                             printInfo('Switch to BUILD mode (Tab key) to enable file modifications');
+                            streamEmitter.emitPermissionDenial(toolCall.name, 'mode restriction');
                             continue;
                         }
 
-                        printInfo(`🔧 Tool: ${toolCall.name}`);
+                        streamEmitter.emitToolUse(toolCall.name, toolCall.arguments);
+                        const tSpinner = toolSpinner(toolCall.name, toolCall.name);
+                        tSpinner.start();
                         const result = await executeTool(toolCall.name, toolCall.arguments, cwd);
+                        if (result.success) {
+                            tSpinner.succeed(`${toolCall.name} done`);
+                        } else {
+                            tSpinner.fail(`${toolCall.name} failed`);
+                        }
+
+                        streamEmitter.emitToolResult(toolCall.name, result);
+                        registry.registerTool(toolCall.name, 'chat');
+                        registry.recordToolExecution(toolCall.name, result);
+                        historyLog.add('tool_exec', `${toolCall.name} success=${result.success}`);
 
                         if (result.success) {
                             // Add tool result to messages and continue conversation
@@ -458,6 +586,8 @@ After I execute the tool, I will tell you the result. Then continue with your ne
                 // Save assistant message
                 messages.push({ role: 'assistant', content: fullResponse });
                 await saveMessage(sessionId, { role: 'assistant', content: fullResponse });
+                transcript.append({ role: 'assistant', content: fullResponse });
+                streamEmitter.emitMessageStop(costTracker.summary, 'completed');
 
             } catch (error) {
                 spinner.stop();
@@ -473,7 +603,18 @@ After I execute the tool, I will tell you the result. Then continue with your ne
         }
     }
 
-    console.log('\n' + colors.muted('Goodbye! 👋\n'));
+    // Show animated session summary on exit
+    if (costTracker.totalTokens > 0 || messages.length > 2) {
+        await animatedSessionSummary({
+            tokens: costTracker.totalTokens,
+            cost: costTracker.totalCost.toFixed(4),
+            duration: costTracker.duration,
+            messages: messages.length,
+            tools: registry.totalExecutions
+        });
+    }
+    historyLog.add('session_end', `messages=${messages.length} tokens=${costTracker.totalTokens}`);
+    console.log(colors.muted('  Goodbye! 👋\n'));
 }
 
 export default { startChat, createProvider };

@@ -13,30 +13,66 @@ export const colors = {
     muted: chalk.gray,
     code: chalk.hex('#E879F9'),
     user: chalk.hex('#3B82F6'),
-    assistant: chalk.hex('#10B981')
+    assistant: chalk.hex('#10B981'),
+    accent: chalk.hex('#F472B6'),
+    nvidia: chalk.hex('#76B900'),
+    dim: chalk.dim,
+    bold: chalk.bold,
+    underline: chalk.underline
 };
 
 export function printLogo() {
-    const logo = `
-  ╔╦╗╦ ╦╦  ╔═╗╔═╗╔═╗╦  ╔═╗╦  ╦
-  ║║║╚╦╝║  ║ ║║  ╠═╣║  ║  ║  ║
-  ╩ ╩ ╩ ╩═╝╚═╝╚═╝╩ ╩╩═╝╚═╝╩═╝╩
-  `;
-
-    console.log(colors.primary(logo));
-    console.log(colors.muted('  Your Own AI Coding Assistant\n'));
+    const gradient = ['#7C3AED', '#8B5CF6', '#A78BFA', '#C4B5FD', '#A78BFA', '#8B5CF6'];
+    const logoLines = [
+        '  ███╗   ███╗██╗      ██████╗ ',
+        '  ████╗ ████║██║     ██╔════╝ ',
+        '  ██╔████╔██║██║     ██║      ',
+        '  ██║╚██╔╝██║██║     ██║      ',
+        '  ██║ ╚═╝ ██║███████╗╚██████╗',
+        '  ╚═╝     ╚═╝╚══════╝ ╚═════╝',
+    ];
+    for (let i = 0; i < logoLines.length; i++) {
+        const color = gradient[i % gradient.length];
+        console.log(chalk.hex(color).bold(logoLines[i]));
+    }
+    console.log(colors.muted('  Your Own AI Coding Assistant - Private, Local, Yours'));
+    console.log(colors.dim(`  v${process.env.npm_package_version || '3.4.1'}`) + '\n');
 }
 
 export function printWelcome(provider, model) {
-    const content = `${figures.pointer} Provider: ${colors.secondary(provider)}
-${figures.pointer} Model: ${colors.code(model)}
-${figures.pointer} Type ${colors.primary('/help')} for commands`;
+    const width = Math.min(process.stdout.columns || 60, 60);
+    const line = colors.primary('─'.repeat(width));
 
-    console.log(boxen(content, {
-        padding: 1,
-        margin: { top: 0, bottom: 1, left: 0, right: 0 },
+    console.log(line);
+    console.log(`  ${colors.success(figures.tick)} Provider  ${colors.secondary.bold(provider)}`);
+    console.log(`  ${colors.success(figures.tick)} Model     ${colors.code(model)}`);
+    console.log(`  ${colors.info(figures.info)} Type ${colors.primary('/help')} for commands, ${colors.primary('Tab')} to switch modes`);
+    console.log(line + '\n');
+}
+
+export function printSection(title) {
+    const width = Math.min(process.stdout.columns || 60, 60);
+    console.log(`\n${colors.primary('━━━')} ${colors.primary.bold(title)} ${colors.primary('━'.repeat(Math.max(0, width - title.length - 6)))}\n`);
+}
+
+export function printConnectionStatus(name, connected, detail = '') {
+    const icon = connected ? colors.success(figures.tick) : colors.error(figures.cross);
+    const status = connected ? colors.success('connected') : colors.error('offline');
+    const extra = detail ? colors.muted(` (${detail})`) : '';
+    console.log(`  ${icon} ${name}: ${status}${extra}`);
+}
+
+export function printKeyValue(key, value, indent = 2) {
+    const pad = ' '.repeat(indent);
+    console.log(`${pad}${colors.muted(key + ':')} ${value}`);
+}
+
+export function printBanner(text, borderColor = '#7C3AED') {
+    console.log(boxen(text, {
+        padding: { top: 0, bottom: 0, left: 1, right: 1 },
         borderStyle: 'round',
-        borderColor: '#7C3AED'
+        borderColor,
+        dimBorder: false
     }));
 }
 
@@ -117,28 +153,37 @@ ${colors.primary('Tips:')}
 }
 
 export function printProvidersList(providers, current) {
-    console.log(`\n${colors.primary('Available Providers:')}\n`);
+    printSection('Available Providers');
     for (const [key, provider] of Object.entries(providers)) {
         const isCurrent = key === current;
-        const marker = isCurrent ? colors.success(figures.tick) : ' ';
-        const name = isCurrent ? colors.primary(provider.name) : provider.name;
-        console.log(`  ${marker} ${provider.icon} ${name} - ${colors.muted(provider.description)}`);
+        const marker = isCurrent ? colors.success(figures.tick) : colors.muted(figures.pointer);
+        const name = isCurrent ? colors.primary.bold(provider.name) : provider.name;
+        const keyLabel = isCurrent ? colors.success(`[${key}]`) : colors.muted(`[${key}]`);
+        const apiNote = provider.requiresApiKey ? colors.warning(' (API key required)') : colors.success(' (no key needed)');
+        console.log(`  ${marker} ${provider.icon} ${name} ${keyLabel}${apiNote}`);
+        console.log(`    ${colors.muted(provider.description)}`);
     }
     console.log();
 }
 
 export function printModelsList(models) {
-    console.log(`\n${colors.primary('Available Models:')}\n`);
-    for (const model of models) {
-        console.log(`  ${figures.pointer} ${colors.code(model.id)} ${colors.muted(`(${model.owned_by})`)}`);
+    printSection('Available Models');
+    for (let i = 0; i < models.length; i++) {
+        const model = models[i];
+        const num = colors.muted(`${(i + 1).toString().padStart(2)}.`);
+        console.log(`  ${num} ${colors.code(model.id)} ${colors.muted(`- ${model.owned_by || 'unknown'}`)}`);
     }
-    console.log();
+    console.log(colors.muted(`\n  ${models.length} model(s) available\n`));
 }
 
 export default {
     colors,
     printLogo,
     printWelcome,
+    printSection,
+    printConnectionStatus,
+    printKeyValue,
+    printBanner,
     printUserMessage,
     printAssistantStart,
     printAssistantChunk,

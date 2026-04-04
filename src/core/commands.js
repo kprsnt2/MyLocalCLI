@@ -24,6 +24,14 @@ import { createBranch, listBranches, loadBranch, printBranchesList, setCurrentBr
 import { detectSubagentMention, getSubagent, getAllSubagents, createSubagentContext, printSubagentsList } from './subagents.js';
 import { initializeProject, getTemplate, getAllTemplates, printTemplatesList } from './templates.js';
 import { createSkillTemplate, searchSkills } from '../skills/skill.js';
+import { PERMISSION_PROFILES } from './permissions.js';
+import { PromptRouter } from './router.js';
+import { getRegistry } from './registry.js';
+import { getStreamEmitter } from './streamEvents.js';
+import { runSetup, buildSystemInitMessage } from './setupReport.js';
+import { runBootstrap } from './bootstrap.js';
+import { listSessions, StoredSession, saveSession } from './session.js';
+import { animatedModeSwitch } from '../ui/animations.js';
 
 // Built-in commands registry
 const BUILTIN_COMMANDS = new Map();
@@ -306,6 +314,18 @@ registerCommand({
         console.log('    /agents         - List available agents');
         console.log('    /agent <name>   - Use a specific agent');
 
+        console.log(colors.secondary('\n  CLAUDE CODE FEATURES:'));
+        console.log('    /cost           - Show session cost and token usage');
+        console.log('    /session        - Session management (list/save/info)');
+        console.log('    /permissions    - Show/modify tool permissions');
+        console.log('    /route <prompt> - Route a prompt to tools/commands');
+        console.log('    /setup          - Show workspace environment report');
+        console.log('    /bootstrap      - Show startup bootstrap graph');
+        console.log('    /events         - Show stream event log');
+        console.log('    /registry       - Show execution registry');
+        console.log('    /transcript     - Show session transcript');
+        console.log('    /system-init    - Show system init report');
+
         // Show custom commands if any
         const customCmds = [...CUSTOM_COMMANDS.values()].filter((v, i, a) =>
             a.findIndex(c => c.name === v.name) === i
@@ -403,13 +423,14 @@ registerCommand({
     name: 'tools',
     description: 'List available AI tools',
     handler: async (args, raw, ctx) => {
-        console.log('\n' + colors.primary('━━━ Available Tools (26) ━━━') + '\n');
+        console.log('\n' + colors.primary('━━━ Available Tools (42) ━━━') + '\n');
 
-        console.log(colors.secondary('  FILE OPERATIONS (11):'));
+        console.log(colors.secondary('  FILE OPERATIONS (12):'));
         console.log('    read_file       - Read file contents');
         console.log('    write_file      - Create/overwrite a file');
         console.log('    edit_file       - Edit by replacing text');
         console.log('    multi_edit_file - Multiple edits in one call');
+        console.log('    patch_file      - Apply unified diff patch');
         console.log('    append_file     - Append to file');
         console.log('    insert_at_line  - Insert at specific line');
         console.log('    read_lines      - Read specific lines');
@@ -418,34 +439,53 @@ registerCommand({
         console.log('    copy_file       - Copy a file');
         console.log('    file_info       - Get file metadata');
 
-        console.log(colors.secondary('\n  DIRECTORY (3):'));
+        console.log(colors.secondary('\n  DIRECTORY (4):'));
         console.log('    list_directory  - List directory contents');
         console.log('    create_directory - Create directories');
         console.log('    tree            - Show directory tree');
+        console.log('    batch_rename    - Rename files by pattern');
 
-        console.log(colors.secondary('\n  SEARCH (4):'));
+        console.log(colors.secondary('\n  SEARCH (5):'));
         console.log('    search_files    - Search by glob pattern');
         console.log('    grep            - Search text in files');
         console.log('    find_replace    - Find and replace text');
         console.log('    codebase_search - Fuzzy code search');
+        console.log('    compare_files   - Diff two files');
 
         console.log(colors.secondary('\n  COMMANDS (1):'));
         console.log('    run_command     - Execute shell command');
 
-        console.log(colors.secondary('\n  GIT (4):'));
+        console.log(colors.secondary('\n  GIT (6):'));
         console.log('    git_status      - Show git status');
         console.log('    git_diff        - Show git diff');
         console.log('    git_log         - Show commit history');
         console.log('    git_commit      - Create a commit');
+        console.log('    git_branch      - Branch operations');
+        console.log('    git_stash       - Stash operations');
 
-        console.log(colors.secondary('\n  WEB (1):'));
+        console.log(colors.secondary('\n  WEB & HTTP (2):'));
         console.log('    web_fetch       - Fetch URL content');
+        console.log('    http_request    - Full HTTP requests (GET/POST/PUT/DELETE)');
 
-        console.log(colors.secondary('\n  CLAUDE CODE STYLE (2):'));
+        console.log(colors.secondary('\n  PROJECT (4):'));
+        console.log('    test_run        - Auto-detect and run tests');
+        console.log('    lint_check      - Run project linter');
+        console.log('    dependency_check - Check dependencies/audit');
+        console.log('    project_stats   - Lines of code, file counts');
+
+        console.log(colors.secondary('\n  DATA & UTILITY (5):'));
+        console.log('    json_query      - Query JSON files by path');
+        console.log('    regex_test      - Test regex patterns');
+        console.log('    hash_file       - Compute file hashes');
+        console.log('    port_check      - Check if port is in use');
+        console.log('    memory_store    - Session key-value storage');
+
+        console.log(colors.secondary('\n  CLAUDE CODE STYLE (3):'));
         console.log('    todo_write      - Track tasks in todo list');
         console.log('    ask_user        - Ask user for input');
+        console.log('    notebook        - Create/manage markdown notebooks');
 
-        console.log('\n' + colors.muted('  The AI uses these tools automatically based on your request.') + '\n');
+        console.log('\n' + colors.muted('  42 tools | The AI uses these automatically based on your request.') + '\n');
         return null;
     }
 });
@@ -658,14 +698,14 @@ registerCommand({
         // Try agent modes first
         if (AGENT_MODES[modeName]) {
             setAgentMode(modeName);
-            console.log(getModeSwitchMessage(modeName));
+            await animatedModeSwitch(modeName, 'agent');
             return null;
         }
 
         // Try performance modes
         if (PERFORMANCE_MODES[modeName]) {
             setPerformanceMode(modeName);
-            console.log(getModeSwitchMessage(modeName));
+            await animatedModeSwitch(modeName, 'performance');
             return null;
         }
 
@@ -681,7 +721,7 @@ registerCommand({
     description: 'Switch to BUILD mode (full access)',
     handler: async (args, raw, ctx) => {
         setAgentMode('build');
-        console.log(getModeSwitchMessage('build'));
+        await animatedModeSwitch('build', 'agent');
         return null;
     }
 });
@@ -692,7 +732,7 @@ registerCommand({
     description: 'Switch to PLAN mode (read-only)',
     handler: async (args, raw, ctx) => {
         setAgentMode('plan');
-        console.log(getModeSwitchMessage('plan'));
+        await animatedModeSwitch('plan', 'agent');
         return null;
     }
 });
@@ -703,7 +743,7 @@ registerCommand({
     description: 'Switch to SMART mode (max capability)',
     handler: async (args, raw, ctx) => {
         setPerformanceMode('smart');
-        console.log(getModeSwitchMessage('smart'));
+        await animatedModeSwitch('smart', 'performance');
         return null;
     }
 });
@@ -714,7 +754,7 @@ registerCommand({
     description: 'Switch to RUSH mode (fast & efficient)',
     handler: async (args, raw, ctx) => {
         setPerformanceMode('rush');
-        console.log(getModeSwitchMessage('rush'));
+        await animatedModeSwitch('rush', 'performance');
         return null;
     }
 });
@@ -898,7 +938,7 @@ registerCommand({
 
         if (result.success) {
             printSuccess(`${result.template.icon} Initialized ${result.template.name} project!`);
-            printInfo(`Created: MYLOCALCLI.md`);
+            printInfo('Created: MYLOCALCLI.md');
             printInfo('The AI will now follow these guidelines for your project.');
         } else {
             printError(result.error);
@@ -992,6 +1032,263 @@ registerCommand({
     description: 'List available subagents (@mentions)',
     handler: async (args, raw, ctx) => {
         printSubagentsList();
+        return null;
+    }
+});
+
+// ========================================
+// CLAUDE CODE FEATURES (from claw-code)
+// ========================================
+
+// /cost - Show session cost and token usage
+registerCommand({
+    name: 'cost',
+    aliases: ['usage', 'tokens'],
+    description: 'Show session cost and token usage',
+    handler: async (args, raw, ctx) => {
+        const tracker = ctx.costTracker;
+        if (!tracker) {
+            printInfo('Cost tracking not available in this session');
+            return null;
+        }
+        console.log(`\n${colors.primary('━━━ Session Usage ━━━')}\n`);
+        console.log(`  ${tracker.formatSummary()}`);
+        console.log();
+        return null;
+    }
+});
+
+// /permissions - Show or modify tool permissions
+registerCommand({
+    name: 'permissions',
+    aliases: ['perms'],
+    description: 'Show or modify tool permissions',
+    argumentHint: '[deny|allow|profile] [name]',
+    handler: async (args, raw, ctx) => {
+        const permCtx = ctx.permissionContext;
+        if (!permCtx) {
+            printInfo('Permission context not available');
+            return null;
+        }
+
+        const subcommand = args[0]?.toLowerCase();
+
+        if (subcommand === 'deny' && args[1]) {
+            permCtx.addDeny(args[1]);
+            printSuccess(`Denied tool: ${args[1]}`);
+            return null;
+        }
+
+        if (subcommand === 'allow' && args[1]) {
+            permCtx.removeDeny(args[1]);
+            printSuccess(`Allowed tool: ${args[1]}`);
+            return null;
+        }
+
+        if (subcommand === 'profile' && args[1]) {
+            const profile = PERMISSION_PROFILES[args[1]];
+            if (profile) {
+                ctx.permissionContext = profile;
+                printSuccess(`Applied permission profile: ${args[1]}`);
+            } else {
+                printError(`Unknown profile: ${args[1]}`);
+                printInfo(`Available: ${Object.keys(PERMISSION_PROFILES).join(', ')}`);
+            }
+            return null;
+        }
+
+        console.log(`\n${colors.primary('━━━ Tool Permissions ━━━')}\n`);
+        console.log(`  ${permCtx.formatSummary()}`);
+        console.log(`\n  Profiles: ${Object.keys(PERMISSION_PROFILES).join(', ')}`);
+        console.log('\n  Usage:');
+        console.log('    /permissions deny <tool>    - Block a tool');
+        console.log('    /permissions allow <tool>   - Unblock a tool');
+        console.log('    /permissions profile <name> - Apply a preset\n');
+        return null;
+    }
+});
+
+// /session - Session management
+registerCommand({
+    name: 'session',
+    aliases: ['sessions'],
+    description: 'Manage sessions with token tracking',
+    argumentHint: '[list|save|info]',
+    handler: async (args, raw, ctx) => {
+        const subcommand = args[0]?.toLowerCase();
+
+        if (subcommand === 'list') {
+            try {
+                const sessions = await listSessions();
+                if (sessions.length === 0) {
+                    printInfo('No saved sessions');
+                } else {
+                    console.log(`\n${colors.primary('━━━ Saved Sessions ━━━')}\n`);
+                    for (const s of sessions.slice(0, 15)) {
+                        const date = new Date(s.createdAt).toLocaleDateString();
+                        console.log(`  ${colors.muted(s.sessionId.slice(0, 12))}  ${s.totalTokens} tokens  ${colors.muted(date)}`);
+                    }
+                    console.log();
+                }
+            } catch {
+                printInfo('No saved sessions');
+            }
+            return null;
+        }
+
+        if (subcommand === 'save') {
+            const tracker = ctx.costTracker;
+            const session = new StoredSession({
+                sessionId: ctx.sessionId,
+                messages: ctx.messages.map(m => m.content?.slice(0, 500) || ''),
+                inputTokens: tracker?.totalInputTokens || 0,
+                outputTokens: tracker?.totalOutputTokens || 0,
+                provider: ctx.providerName,
+                model: ctx.model
+            });
+            const savedPath = await saveSession(session);
+            printSuccess(`Session saved: ${savedPath}`);
+            return null;
+        }
+
+        // Default: show info
+        console.log(`\n${colors.primary('━━━ Current Session ━━━')}\n`);
+        printInfo(`Session ID: ${ctx.sessionId?.slice(0, 12)}...`);
+        printInfo(`Messages: ${ctx.messages.length}`);
+        if (ctx.costTracker) {
+            printInfo(`Tokens: ${ctx.costTracker.formatCompact()}`);
+        }
+        console.log('\n  Usage:');
+        console.log('    /session list  - List saved sessions');
+        console.log('    /session save  - Save current session');
+        console.log('    /session info  - Show session info\n');
+        return null;
+    }
+});
+
+// /route - Route a prompt to matching tools/commands
+registerCommand({
+    name: 'route',
+    description: 'Show which tools/commands match a prompt',
+    argumentHint: '<prompt>',
+    handler: async (args, raw, ctx) => {
+        if (!raw) {
+            printInfo('Usage: /route <your prompt>');
+            return null;
+        }
+
+        const router = new PromptRouter();
+        const matches = router.routePrompt(raw);
+
+        if (matches.length === 0) {
+            printInfo('No matching tools or commands found');
+        } else {
+            console.log(`\n${colors.primary('━━━ Route Matches ━━━')}\n`);
+            for (const match of matches) {
+                const kind = match.kind === 'command' ? colors.secondary('[CMD]') : colors.primary('[TOOL]');
+                console.log(`  ${kind} ${match.name} (score: ${match.score}) — ${colors.muted(match.sourceHint)}`);
+            }
+            console.log();
+        }
+        return null;
+    }
+});
+
+// /setup - Show setup/environment report
+registerCommand({
+    name: 'setup',
+    aliases: ['env', 'environment'],
+    description: 'Show workspace setup and environment report',
+    handler: async (args, raw, ctx) => {
+        const report = await runSetup(ctx.cwd);
+        console.log(`\n${report.formatMarkdown()}\n`);
+        return null;
+    }
+});
+
+// /bootstrap - Show bootstrap graph
+registerCommand({
+    name: 'bootstrap',
+    description: 'Show startup bootstrap graph',
+    handler: async (args, raw, ctx) => {
+        const graph = await runBootstrap();
+        console.log(`\n${graph.formatMarkdown()}\n`);
+        return null;
+    }
+});
+
+// /events - Show stream event log
+registerCommand({
+    name: 'events',
+    aliases: ['eventlog'],
+    description: 'Show stream event log',
+    handler: async (args, raw, ctx) => {
+        const emitter = getStreamEmitter();
+        const log = emitter.getLog();
+        if (log.length === 0) {
+            printInfo('No events recorded yet');
+            return null;
+        }
+
+        console.log(`\n${colors.primary('━━━ Stream Events ━━━')}\n`);
+        const recent = log.slice(-20);
+        for (const event of recent) {
+            const time = new Date(event.timestamp).toLocaleTimeString();
+            console.log(`  ${colors.muted(time)} ${colors.secondary(event.type)} ${JSON.stringify(event.data).slice(0, 80)}`);
+        }
+        console.log(`\n  Total events: ${log.length}\n`);
+        return null;
+    }
+});
+
+// /registry - Show execution registry
+registerCommand({
+    name: 'registry',
+    description: 'Show tool/command execution registry',
+    handler: async (args, raw, ctx) => {
+        const registry = getRegistry();
+        console.log(`\n${colors.primary('━━━ Execution Registry ━━━')}\n`);
+        console.log(`  ${registry.formatSummary()}`);
+        console.log();
+        return null;
+    }
+});
+
+// /transcript - Show session transcript
+registerCommand({
+    name: 'transcript',
+    description: 'Show session transcript',
+    argumentHint: '[compact]',
+    handler: async (args, raw, ctx) => {
+        const transcript = ctx.transcript;
+        if (!transcript || transcript.length === 0) {
+            printInfo('No transcript entries yet');
+            return null;
+        }
+
+        console.log(`\n${colors.primary('━━━ Session Transcript ━━━')}\n`);
+        const entries = transcript.replay();
+        const limit = args[0] === 'compact' ? 5 : 20;
+        for (const entry of entries.slice(-limit)) {
+            const time = new Date(entry.timestamp).toLocaleTimeString();
+            const content = typeof entry.content === 'string'
+                ? entry.content.slice(0, 100)
+                : JSON.stringify(entry.content).slice(0, 100);
+            console.log(`  ${colors.muted(time)} ${content}`);
+        }
+        console.log(`\n  Total entries: ${entries.length} | Flushed: ${transcript.flushed}\n`);
+        return null;
+    }
+});
+
+// /system-init - Show system init message
+registerCommand({
+    name: 'system-init',
+    aliases: ['sysinit'],
+    description: 'Show system initialization report',
+    handler: async (args, raw, ctx) => {
+        const msg = buildSystemInitMessage();
+        console.log(`\n${msg}\n`);
         return null;
     }
 });

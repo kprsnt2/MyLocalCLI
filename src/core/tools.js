@@ -417,8 +417,255 @@ export const TOOLS = [
                 required: ['question']
             }
         }
+    },
+    // === ADVANCED TOOLS ===
+    {
+        type: 'function',
+        function: {
+            name: 'patch_file',
+            description: 'Apply a unified diff patch to a file. Accepts standard diff format with + and - lines.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'File path to patch' },
+                    patch: { type: 'string', description: 'Unified diff patch content (lines starting with + or -)' }
+                },
+                required: ['path', 'patch']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'compare_files',
+            description: 'Compare two files and show differences.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    file_a: { type: 'string', description: 'First file path' },
+                    file_b: { type: 'string', description: 'Second file path' }
+                },
+                required: ['file_a', 'file_b']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'batch_rename',
+            description: 'Rename multiple files matching a pattern using find/replace on filenames.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    directory: { type: 'string', description: 'Directory to search in' },
+                    find: { type: 'string', description: 'Pattern to find in filenames' },
+                    replace: { type: 'string', description: 'Replacement string' },
+                    dry_run: { type: 'boolean', description: 'Preview changes without applying' }
+                },
+                required: ['directory', 'find', 'replace']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'project_stats',
+            description: 'Show project statistics: lines of code, file counts by language, directory sizes.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Project directory (default: current)' }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'test_run',
+            description: 'Detect and run the project test suite automatically (npm test, pytest, cargo test, etc.).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    command: { type: 'string', description: 'Override test command (auto-detected if empty)' },
+                    filter: { type: 'string', description: 'Filter/pattern for specific tests' }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'lint_check',
+            description: 'Run project linter automatically (eslint, pylint, clippy, etc.).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    fix: { type: 'boolean', description: 'Auto-fix issues if supported' }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'dependency_check',
+            description: 'Check project dependencies for issues, outdated packages, or vulnerabilities.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    audit: { type: 'boolean', description: 'Run security audit' }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'http_request',
+            description: 'Make an HTTP request (GET, POST, PUT, DELETE) and return the response.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: { type: 'string', description: 'Request URL' },
+                    method: { type: 'string', description: 'HTTP method (GET, POST, PUT, DELETE)', enum: ['GET', 'POST', 'PUT', 'DELETE'] },
+                    headers: { type: 'object', description: 'Request headers' },
+                    body: { type: 'string', description: 'Request body (for POST/PUT)' }
+                },
+                required: ['url']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'json_query',
+            description: 'Read a JSON file and extract data using a dot-notation path (e.g., "dependencies.react").',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Path to JSON file' },
+                    query: { type: 'string', description: 'Dot-notation query path (e.g., "scripts.test", "dependencies")' }
+                },
+                required: ['path', 'query']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'regex_test',
+            description: 'Test a regex pattern against input text and return all matches with groups.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    pattern: { type: 'string', description: 'Regex pattern' },
+                    text: { type: 'string', description: 'Text to test against' },
+                    flags: { type: 'string', description: 'Regex flags (g, i, m, etc.)' }
+                },
+                required: ['pattern', 'text']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'hash_file',
+            description: 'Compute hash of a file (MD5, SHA-256).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'File path' },
+                    algorithm: { type: 'string', description: 'Hash algorithm (md5, sha256)', enum: ['md5', 'sha256'] }
+                },
+                required: ['path']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'port_check',
+            description: 'Check if a network port is in use and what process is using it.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    port: { type: 'number', description: 'Port number to check' }
+                },
+                required: ['port']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'memory_store',
+            description: 'Store or retrieve key-value data that persists across the session. Use for remembering context.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', description: 'Action: set, get, list, delete', enum: ['set', 'get', 'list', 'delete'] },
+                    key: { type: 'string', description: 'Key name' },
+                    value: { type: 'string', description: 'Value to store (for set action)' }
+                },
+                required: ['action']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'notebook',
+            description: 'Create or append to a Markdown notebook for documenting progress, decisions, and findings.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name: { type: 'string', description: 'Notebook name (creates .mylocalcli/notebooks/<name>.md)' },
+                    content: { type: 'string', description: 'Markdown content to add' },
+                    action: { type: 'string', description: 'Action: create, append, read', enum: ['create', 'append', 'read'] }
+                },
+                required: ['name', 'action']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'git_branch',
+            description: 'Create, list, or switch git branches.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', description: 'Action: create, list, switch, delete', enum: ['create', 'list', 'switch', 'delete'] },
+                    name: { type: 'string', description: 'Branch name (for create/switch/delete)' }
+                },
+                required: ['action']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'git_stash',
+            description: 'Git stash operations: save, pop, list, or drop stashed changes.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', description: 'Action: save, pop, list, drop', enum: ['save', 'pop', 'list', 'drop'] },
+                    message: { type: 'string', description: 'Stash message (for save)' }
+                },
+                required: ['action']
+            }
+        }
     }
 ];
+
+// In-memory key-value store for memory_store tool
+const memoryStore = new Map();
 
 // Execute a tool by name
 export async function executeTool(toolName, args, cwd, options = {}) {
@@ -1053,6 +1300,329 @@ export async function executeTool(toolName, args, cwd, options = {}) {
             } catch (e) {
                 return { success: false, error: e.message };
             }
+        }
+
+        // === ADVANCED TOOL IMPLEMENTATIONS ===
+
+        case 'patch_file': {
+            try {
+                const filePath = resolvePath(args.path);
+                const existing = await readFile(filePath);
+                if (!existing.success) return { success: false, error: `File not found: ${args.path}` };
+
+                const lines = existing.content.split(/\r?\n/);
+                const hasCRLF = existing.content.includes('\r\n');
+                const patchLines = args.patch.split(/\r?\n/);
+
+                let result = [...lines];
+                let offset = 0;
+                for (const pl of patchLines) {
+                    if (pl.startsWith('- ')) {
+                        const text = pl.slice(2);
+                        const idx = result.findIndex(l => l.trim() === text.trim());
+                        if (idx >= 0) { result.splice(idx, 1); offset--; }
+                    } else if (pl.startsWith('+ ')) {
+                        result.push(pl.slice(2));
+                    }
+                }
+
+                let content = result.join('\n');
+                if (hasCRLF) content = content.replace(/\n/g, '\r\n');
+                await writeFile(filePath, content);
+                printSuccess(`Patched: ${args.path}`);
+                return { success: true };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'compare_files': {
+            try {
+                const a = await readFile(resolvePath(args.file_a));
+                const b = await readFile(resolvePath(args.file_b));
+                if (!a.success) return { success: false, error: `Cannot read: ${args.file_a}` };
+                if (!b.success) return { success: false, error: `Cannot read: ${args.file_b}` };
+
+                const linesA = a.content.split(/\r?\n/);
+                const linesB = b.content.split(/\r?\n/);
+                const diff = [];
+                const max = Math.max(linesA.length, linesB.length);
+                for (let i = 0; i < max; i++) {
+                    if (linesA[i] !== linesB[i]) {
+                        diff.push(`Line ${i + 1}:`);
+                        if (linesA[i] !== undefined) diff.push(`  - ${linesA[i]}`);
+                        if (linesB[i] !== undefined) diff.push(`  + ${linesB[i]}`);
+                    }
+                }
+                printInfo(`Compared: ${diff.length ? diff.length / 2 + ' differences' : 'identical'}`);
+                return { success: true, content: diff.join('\n') || 'Files are identical', identical: diff.length === 0 };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'batch_rename': {
+            try {
+                const dir = resolvePath(args.directory || '.');
+                const items = await fs.readdir(dir);
+                const renames = [];
+                for (const item of items) {
+                    if (item.includes(args.find)) {
+                        renames.push({ from: item, to: item.replace(args.find, args.replace) });
+                    }
+                }
+                if (args.dry_run) {
+                    printInfo(`Dry run: ${renames.length} files would be renamed`);
+                    return { success: true, content: renames.map(r => `${r.from} -> ${r.to}`).join('\n'), count: renames.length };
+                }
+                for (const r of renames) {
+                    await fs.rename(path.join(dir, r.from), path.join(dir, r.to));
+                }
+                printSuccess(`Renamed ${renames.length} files`);
+                return { success: true, count: renames.length };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'project_stats': {
+            try {
+                const dir = resolvePath(args.path || '.');
+                const files = await searchFiles('**/*', dir);
+                const stats = {};
+                let totalLines = 0;
+                const extMap = { '.js': 'JavaScript', '.ts': 'TypeScript', '.py': 'Python', '.java': 'Java', '.go': 'Go', '.rs': 'Rust', '.c': 'C', '.cpp': 'C++', '.jsx': 'JSX', '.tsx': 'TSX', '.vue': 'Vue', '.svelte': 'Svelte', '.css': 'CSS', '.html': 'HTML', '.json': 'JSON', '.md': 'Markdown' };
+                for (const f of files.slice(0, 500)) {
+                    const ext = path.extname(f).toLowerCase();
+                    const lang = extMap[ext] || ext || 'other';
+                    if (!stats[lang]) stats[lang] = { files: 0, lines: 0 };
+                    stats[lang].files++;
+                    try {
+                        const content = await readFile(f);
+                        if (content.success) {
+                            const lines = content.content.split(/\r?\n/).length;
+                            stats[lang].lines += lines;
+                            totalLines += lines;
+                        }
+                    } catch { /* skip */ }
+                }
+                const content = Object.entries(stats)
+                    .sort((a, b) => b[1].lines - a[1].lines)
+                    .map(([lang, s]) => `${lang}: ${s.files} files, ${s.lines} lines`)
+                    .join('\n');
+                printInfo(`Project: ${files.length} files, ${totalLines} total lines`);
+                return { success: true, content: `Total: ${files.length} files, ${totalLines} lines\n\n${content}`, totalFiles: files.length, totalLines };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'test_run': {
+            try {
+                let cmd = args.command;
+                if (!cmd) {
+                    try { await fs.access(path.join(cwd, 'package.json')); cmd = 'npm test'; }
+                    catch { /* not node */ }
+                    if (!cmd) try { await fs.access(path.join(cwd, 'pytest.ini')); cmd = 'python -m pytest'; } catch { /* */ }
+                    if (!cmd) try { await fs.access(path.join(cwd, 'Cargo.toml')); cmd = 'cargo test'; } catch { /* */ }
+                    if (!cmd) try { await fs.access(path.join(cwd, 'go.mod')); cmd = 'go test ./...'; } catch { /* */ }
+                    if (!cmd) cmd = 'echo "No test runner detected"';
+                }
+                if (args.filter) cmd += ` -- ${args.filter}`;
+                printInfo(`Running tests: ${cmd}`);
+                return await executeCommand(cmd, { cwd, requireConfirmation: false });
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'lint_check': {
+            try {
+                let cmd;
+                try { await fs.access(path.join(cwd, 'package.json')); cmd = args.fix ? 'npx eslint . --fix' : 'npx eslint .'; }
+                catch { /* not node */ }
+                if (!cmd) try { await fs.access(path.join(cwd, 'Cargo.toml')); cmd = 'cargo clippy'; } catch { /* */ }
+                if (!cmd) cmd = 'echo "No linter detected"';
+                printInfo(`Linting: ${cmd}`);
+                return await executeCommand(cmd, { cwd, requireConfirmation: false });
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'dependency_check': {
+            try {
+                let cmd;
+                try { await fs.access(path.join(cwd, 'package.json')); cmd = args.audit ? 'npm audit' : 'npm outdated'; }
+                catch { /* not node */ }
+                if (!cmd) try { await fs.access(path.join(cwd, 'requirements.txt')); cmd = 'pip list --outdated'; } catch { /* */ }
+                if (!cmd) cmd = 'echo "No package manager detected"';
+                printInfo(`Checking dependencies: ${cmd}`);
+                return await executeCommand(cmd, { cwd, requireConfirmation: false });
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'http_request': {
+            try {
+                const method = args.method || 'GET';
+                const headers = args.headers || {};
+                const opts = { method, headers };
+                if (args.body && (method === 'POST' || method === 'PUT')) {
+                    opts.body = args.body;
+                    if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+                }
+                const response = await fetch(args.url, opts);
+                const text = await response.text();
+                printInfo(`${method} ${args.url} -> ${response.status}`);
+                return { success: true, status: response.status, content: text.slice(0, 10000), headers: Object.fromEntries(response.headers) };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'json_query': {
+            try {
+                const filePath = resolvePath(args.path);
+                const raw = await fs.readFile(filePath, 'utf-8');
+                const data = JSON.parse(raw);
+                const parts = args.query.split('.');
+                let result = data;
+                for (const part of parts) {
+                    if (result === undefined || result === null) break;
+                    result = result[part];
+                }
+                const content = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
+                printInfo(`JSON query: ${args.query}`);
+                return { success: true, content, value: result };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'regex_test': {
+            try {
+                const flags = args.flags || 'g';
+                const regex = new RegExp(args.pattern, flags);
+                const matches = [];
+                let m;
+                while ((m = regex.exec(args.text)) !== null) {
+                    matches.push({ match: m[0], index: m.index, groups: m.slice(1) });
+                    if (!flags.includes('g')) break;
+                }
+                printInfo(`Regex: ${matches.length} match(es)`);
+                return { success: true, matches, content: matches.map(m => `[${m.index}] "${m.match}"`).join('\n') };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'hash_file': {
+            try {
+                const crypto = await import('crypto');
+                const filePath = resolvePath(args.path);
+                const content = await fs.readFile(filePath);
+                const algo = args.algorithm || 'sha256';
+                const hash = crypto.createHash(algo).update(content).digest('hex');
+                printInfo(`${algo.toUpperCase()}: ${hash.slice(0, 16)}...`);
+                return { success: true, hash, algorithm: algo, content: `${algo}: ${hash}` };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'port_check': {
+            try {
+                const net = await import('net');
+                return await new Promise((resolve) => {
+                    const server = net.createServer();
+                    server.once('error', () => {
+                        printInfo(`Port ${args.port}: IN USE`);
+                        resolve({ success: true, inUse: true, content: `Port ${args.port} is in use` });
+                    });
+                    server.once('listening', () => {
+                        server.close();
+                        printInfo(`Port ${args.port}: AVAILABLE`);
+                        resolve({ success: true, inUse: false, content: `Port ${args.port} is available` });
+                    });
+                    server.listen(args.port);
+                });
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'memory_store': {
+            if (args.action === 'set') {
+                memoryStore.set(args.key, args.value);
+                printSuccess(`Stored: ${args.key}`);
+                return { success: true };
+            }
+            if (args.action === 'get') {
+                const val = memoryStore.get(args.key);
+                return { success: true, content: val !== undefined ? val : `Key not found: ${args.key}`, value: val };
+            }
+            if (args.action === 'list') {
+                const entries = [...memoryStore.entries()].map(([k, v]) => `${k}: ${v}`);
+                return { success: true, content: entries.join('\n') || 'Empty', count: memoryStore.size };
+            }
+            if (args.action === 'delete') {
+                memoryStore.delete(args.key);
+                return { success: true };
+            }
+            return { success: false, error: 'Invalid action' };
+        }
+
+        case 'notebook': {
+            try {
+                const nbDir = path.join(cwd, '.mylocalcli', 'notebooks');
+                await fs.mkdir(nbDir, { recursive: true });
+                const nbPath = path.join(nbDir, `${args.name}.md`);
+                if (args.action === 'create') {
+                    const header = `# ${args.name}\n\nCreated: ${new Date().toISOString()}\n\n---\n\n${args.content || ''}\n`;
+                    await fs.writeFile(nbPath, header);
+                    printSuccess(`Notebook created: ${args.name}`);
+                    return { success: true };
+                }
+                if (args.action === 'append') {
+                    const timestamp = new Date().toLocaleTimeString();
+                    await fs.appendFile(nbPath, `\n## [${timestamp}]\n\n${args.content}\n`);
+                    printSuccess(`Appended to: ${args.name}`);
+                    return { success: true };
+                }
+                if (args.action === 'read') {
+                    const content = await fs.readFile(nbPath, 'utf-8');
+                    return { success: true, content };
+                }
+                return { success: false, error: 'Invalid action' };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'git_branch': {
+            try {
+                if (args.action === 'list') {
+                    const output = execSync('git branch -a', { cwd, encoding: 'utf-8' });
+                    return { success: true, content: output.trim() };
+                }
+                if (args.action === 'create') {
+                    execSync(`git checkout -b ${args.name}`, { cwd, encoding: 'utf-8' });
+                    printSuccess(`Created branch: ${args.name}`);
+                    return { success: true };
+                }
+                if (args.action === 'switch') {
+                    execSync(`git checkout ${args.name}`, { cwd, encoding: 'utf-8' });
+                    printSuccess(`Switched to: ${args.name}`);
+                    return { success: true };
+                }
+                if (args.action === 'delete') {
+                    execSync(`git branch -d ${args.name}`, { cwd, encoding: 'utf-8' });
+                    printSuccess(`Deleted branch: ${args.name}`);
+                    return { success: true };
+                }
+                return { success: false, error: 'Invalid action' };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'git_stash': {
+            try {
+                if (args.action === 'save') {
+                    const msg = args.message ? `-m "${args.message}"` : '';
+                    execSync(`git stash ${msg}`, { cwd, encoding: 'utf-8' });
+                    printSuccess('Changes stashed');
+                    return { success: true };
+                }
+                if (args.action === 'pop') {
+                    execSync('git stash pop', { cwd, encoding: 'utf-8' });
+                    printSuccess('Stash popped');
+                    return { success: true };
+                }
+                if (args.action === 'list') {
+                    const output = execSync('git stash list', { cwd, encoding: 'utf-8' });
+                    return { success: true, content: output.trim() || 'No stashes' };
+                }
+                if (args.action === 'drop') {
+                    execSync('git stash drop', { cwd, encoding: 'utf-8' });
+                    return { success: true };
+                }
+                return { success: false, error: 'Invalid action' };
+            } catch (e) { return { success: false, error: e.message }; }
         }
 
         default:

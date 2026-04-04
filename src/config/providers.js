@@ -43,6 +43,13 @@ export const PROVIDERS = {
     requiresApiKey: true,
     icon: '⚡'
   },
+  nvidia: {
+    name: 'NVIDIA API',
+    description: 'NVIDIA NIM inference endpoints',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    requiresApiKey: true,
+    icon: '🟢'
+  },
   custom: {
     name: 'Custom',
     description: 'Any OpenAI-compatible API',
@@ -60,5 +67,6 @@ export const DEFAULT_MODELS = {
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
   openai: 'gpt-4o-mini',
   groq: 'llama-3.3-70b-versatile',
+  nvidia: 'z-ai/glm5',
   custom: 'default'
 };

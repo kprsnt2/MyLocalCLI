@@ -22,6 +22,7 @@ import {
 import { LMStudioProvider } from './providers/lmstudio.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenRouterProvider } from './providers/openrouter.js';
+import { NvidiaProvider } from './providers/nvidia.js';
 import {
     listConversations,
     deleteConversation,
@@ -59,7 +60,7 @@ program
 program
     .command('chat', { isDefault: true })
     .description('Start interactive chat (default: OpenCode-style TUI)')
-    .option('-p, --provider <provider>', 'Provider to use (lmstudio, ollama, openrouter, openai, groq, custom)')
+    .option('-p, --provider <provider>', 'Provider to use (lmstudio, ollama, openrouter, openai, groq, nvidia, custom)')
     .option('-m, --model <model>', 'Model to use')
     .option('--no-tools', 'Disable tool calling')
     .option('-l, --load <sessionId>', 'Load a previous conversation')
@@ -112,6 +113,7 @@ program
                     { name: 'OpenRouter (Free models available)', value: 'openrouter' },
                     { name: 'OpenAI API', value: 'openai' },
                     { name: 'Groq (Ultra-fast)', value: 'groq' },
+                    { name: 'NVIDIA API (NIM endpoints)', value: 'nvidia' },
                     { name: 'Custom OpenAI-compatible endpoint', value: 'custom' }
                 ]
             }]);
@@ -281,6 +283,52 @@ program
 
                 setModel('groq', model);
 
+            } else if (provider === 'nvidia') {
+                console.log(chalk.gray('\nGet your NVIDIA API key at: https://build.nvidia.com\n'));
+
+                const { apiKey } = await inquirer.prompt([{
+                    type: 'password',
+                    name: 'apiKey',
+                    message: 'NVIDIA API key:',
+                    mask: '*'
+                }]);
+
+                if (apiKey) {
+                    setApiKey('nvidia', apiKey);
+                }
+
+                // Try to list models from NVIDIA
+                const spinner = createSpinner('Checking NVIDIA API...');
+                spinner.start();
+                const nvidiaProvider = new NvidiaProvider({ apiKey });
+                const isAvailable = await nvidiaProvider.isServerRunning();
+
+                if (isAvailable) {
+                    spinner.succeed('Connected to NVIDIA API!');
+                    let models;
+                    try {
+                        models = await nvidiaProvider.listModels();
+                    } catch {
+                        models = nvidiaProvider.listModels ? await nvidiaProvider.listModels() : [];
+                    }
+
+                    if (models.length > 0) {
+                        const { model } = await inquirer.prompt([{
+                            type: 'list',
+                            name: 'model',
+                            message: 'Select a model:',
+                            choices: models.slice(0, 15).map(m => ({ name: `${m.name} (${m.owned_by})`, value: m.id }))
+                        }]);
+                        setModel('nvidia', model);
+                    } else {
+                        setModel('nvidia', 'z-ai/glm5');
+                        printInfo('Using default model: z-ai/glm5');
+                    }
+                } else {
+                    spinner.warn('Could not connect to NVIDIA API. Check your API key.');
+                    setModel('nvidia', 'z-ai/glm5');
+                }
+
             } else if (provider === 'custom') {
                 const { endpoint, apiKey, model } = await inquirer.prompt([
                     {
@@ -401,6 +449,12 @@ program
                     { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', owned_by: 'Mistral' },
                     { id: 'gemma2-9b-it', name: 'Gemma 2 9B', owned_by: 'Google' }
                 ];
+            } else if (provider === 'nvidia') {
+                const nv = new NvidiaProvider({
+                    apiKey: getApiKey('nvidia'),
+                    baseUrl: getBaseUrl('nvidia')
+                });
+                models = await nv.listModels();
             } else {
                 models = [
                     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', owned_by: 'OpenAI' },
@@ -502,7 +556,7 @@ program
         const { startWebServer } = await import('./core/server.js');
         startWebServer({ port });
 
-        console.log(chalk.hex('#7C3AED')(`\n  Open your browser to: `) + chalk.hex('#06B6D4')(`http://localhost:${port}\n`));
+        console.log(chalk.hex('#7C3AED')('\n  Open your browser to: ') + chalk.hex('#06B6D4')(`http://localhost:${port}\n`));
         console.log(chalk.gray('  Press Ctrl+C to stop the server\n'));
     });
 
@@ -514,6 +568,243 @@ program
         const { startTUI } = await import('./ui/tui.js');
         const provider = getProvider();
         startTUI({ provider });
+    });
+
+// Setup command - Show workspace environment report
+program
+    .command('setup')
+    .description('Show workspace setup and environment report')
+    .action(async () => {
+        const { runSetup } = await import('./core/setupReport.js');
+        const report = await runSetup(process.cwd());
+        console.log(report.formatMarkdown());
+    });
+
+// Bootstrap command - Show startup graph
+program
+    .command('bootstrap')
+    .description('Show startup bootstrap graph')
+    .action(async () => {
+        const { runBootstrap } = await import('./core/bootstrap.js');
+        const graph = await runBootstrap();
+        console.log(graph.formatMarkdown());
+    });
+
+// Sessions command - List saved sessions
+program
+    .command('sessions')
+    .description('List saved sessions with token tracking')
+    .action(async () => {
+        const { listSessions } = await import('./core/session.js');
+        try {
+            const sessions = await listSessions();
+            if (sessions.length === 0) {
+                console.log('No saved sessions');
+            } else {
+                console.log('\nSaved Sessions:\n');
+                for (const s of sessions) {
+                    const date = new Date(s.createdAt).toLocaleDateString();
+                    console.log(`  ${s.sessionId.slice(0, 12)}  ${s.totalTokens} tokens  ${s.provider || 'unknown'}  ${date}`);
+                }
+                console.log();
+            }
+        } catch {
+            console.log('No saved sessions');
+        }
+    });
+
+// System-init command - Show system init message
+program
+    .command('system-init')
+    .description('Show system initialization report')
+    .action(async () => {
+        const { buildSystemInitMessage } = await import('./core/setupReport.js');
+        console.log(buildSystemInitMessage());
+    });
+
+// Doctor command - Check local model endpoints and all provider connectivity
+program
+    .command('doctor')
+    .description('Check provider connectivity and local model availability')
+    .option('-e, --endpoint <url>', 'Check a specific OpenAI-compatible endpoint')
+    .action(async () => {
+        printLogo();
+        console.log(chalk.hex('#7C3AED').bold('  Provider Health Check\n'));
+
+        const { printConnectionStatus } = await import('./ui/terminal.js');
+
+        const checks = [
+            {
+                name: 'LM Studio',
+                icon: '🏠',
+                check: async () => {
+                    const url = getBaseUrl('lmstudio') || 'http://localhost:1234/v1';
+                    const lm = new LMStudioProvider({ baseUrl: url });
+                    const running = await lm.isServerRunning();
+                    if (running) {
+                        const models = await lm.listModels();
+                        return { connected: true, detail: `${models.length} model(s) at ${url}` };
+                    }
+                    return { connected: false, detail: url };
+                }
+            },
+            {
+                name: 'Ollama',
+                icon: '🦙',
+                check: async () => {
+                    const url = getBaseUrl('ollama') || 'http://localhost:11434';
+                    const ol = new OllamaProvider({ baseUrl: url });
+                    const running = await ol.isServerRunning();
+                    if (running) {
+                        const models = await ol.listModels();
+                        return { connected: true, detail: `${models.length} model(s) at ${url}` };
+                    }
+                    return { connected: false, detail: url };
+                }
+            },
+            {
+                name: 'OpenRouter',
+                icon: '🌐',
+                check: async () => {
+                    const key = getApiKey('openrouter');
+                    if (!key) return { connected: false, detail: 'no API key set' };
+                    try {
+                        const res = await fetch('https://openrouter.ai/api/v1/models', {
+                            headers: { 'Authorization': `Bearer ${key}` },
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        return { connected: res.ok, detail: res.ok ? 'API key valid' : `HTTP ${res.status}` };
+                    } catch {
+                        return { connected: false, detail: 'connection failed' };
+                    }
+                }
+            },
+            {
+                name: 'OpenAI',
+                icon: '🔑',
+                check: async () => {
+                    const key = getApiKey('openai');
+                    if (!key) return { connected: false, detail: 'no API key set' };
+                    try {
+                        const res = await fetch('https://api.openai.com/v1/models', {
+                            headers: { 'Authorization': `Bearer ${key}` },
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        return { connected: res.ok, detail: res.ok ? 'API key valid' : `HTTP ${res.status}` };
+                    } catch {
+                        return { connected: false, detail: 'connection failed' };
+                    }
+                }
+            },
+            {
+                name: 'Groq',
+                icon: '⚡',
+                check: async () => {
+                    const key = getApiKey('groq');
+                    if (!key) return { connected: false, detail: 'no API key set' };
+                    try {
+                        const res = await fetch('https://api.groq.com/openai/v1/models', {
+                            headers: { 'Authorization': `Bearer ${key}` },
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        return { connected: res.ok, detail: res.ok ? 'API key valid' : `HTTP ${res.status}` };
+                    } catch {
+                        return { connected: false, detail: 'connection failed' };
+                    }
+                }
+            },
+            {
+                name: 'NVIDIA API',
+                icon: '🟢',
+                check: async () => {
+                    const key = getApiKey('nvidia');
+                    if (!key) return { connected: false, detail: 'no API key set' };
+                    const nv = new NvidiaProvider({ apiKey: key });
+                    const running = await nv.isServerRunning();
+                    if (running) {
+                        const models = await nv.listModels();
+                        return { connected: true, detail: `${models.length} model(s) available` };
+                    }
+                    return { connected: false, detail: 'connection failed' };
+                }
+            }
+        ];
+
+        // Check custom endpoint if configured
+        const customUrl = getBaseUrl('custom');
+        if (customUrl) {
+            checks.push({
+                name: 'Custom Endpoint',
+                icon: '⚙️',
+                check: async () => {
+                    try {
+                        const res = await fetch(`${customUrl}/models`, {
+                            headers: getApiKey('custom') ? { 'Authorization': `Bearer ${getApiKey('custom')}` } : {},
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            const count = data.data?.length || 0;
+                            return { connected: true, detail: `${count} model(s) at ${customUrl}` };
+                        }
+                        return { connected: false, detail: `HTTP ${res.status}` };
+                    } catch {
+                        return { connected: false, detail: customUrl };
+                    }
+                }
+            });
+        }
+
+        // Run all checks
+        for (const c of checks) {
+            process.stdout.write(`  ${c.icon} Checking ${c.name}...`);
+            try {
+                const result = await c.check();
+                process.stdout.write('\r' + ' '.repeat(60) + '\r');
+                printConnectionStatus(c.icon + ' ' + c.name, result.connected, result.detail);
+            } catch {
+                process.stdout.write('\r' + ' '.repeat(60) + '\r');
+                printConnectionStatus(c.icon + ' ' + c.name, false, 'check failed');
+            }
+        }
+
+        // Local endpoint probe
+        console.log('\n' + chalk.hex('#7C3AED').bold('  Local OpenAI-Compatible Endpoint Probe\n'));
+
+        const localEndpoints = [
+            'http://localhost:1234/v1',
+            'http://localhost:11434/v1',
+            'http://localhost:8080/v1',
+            'http://localhost:5000/v1',
+            'http://localhost:3000/v1',
+            'http://127.0.0.1:1234/v1',
+        ];
+
+        let foundLocal = false;
+        for (const ep of localEndpoints) {
+            try {
+                const res = await fetch(`${ep}/models`, { signal: AbortSignal.timeout(2000) });
+                if (res.ok) {
+                    const data = await res.json();
+                    const count = data.data?.length || 0;
+                    printConnectionStatus(ep, true, `${count} model(s)`);
+                    foundLocal = true;
+                }
+            } catch {
+                // not available
+            }
+        }
+
+        if (!foundLocal) {
+            printInfo('No local OpenAI-compatible endpoints found');
+            printInfo('Start LM Studio, Ollama, or another local server to use local models');
+        }
+
+        const current = getProvider();
+        console.log('\n' + chalk.hex('#7C3AED').bold('  Current Config\n'));
+        printInfo(`Active provider: ${PROVIDERS[current]?.icon || ''} ${PROVIDERS[current]?.name || current}`);
+        printInfo(`Active model: ${getModel(current)}`);
+        console.log();
     });
 
 // Parse arguments
