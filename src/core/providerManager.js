@@ -67,25 +67,9 @@ export class ProviderManager {
         return null;
     }
 
-    /**
-     * Weekly health check: Checks configured providers once a week,
-     * updates available models, and prunes retired models.
-     */
     async checkWeeklyHealth() {
-        try {
-            const lastCheck = getSetting('last_weekly_provider_check') || 0;
-            const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-
-            if (Date.now() - lastCheck < oneWeekMs) {
-                return; // Already checked this week
-            }
-
-            setSetting('last_weekly_provider_check', Date.now());
-            console.log(colors.muted(`\n📅 Running weekly provider & model catalog maintenance...`));
-
-            const viable = await this.getViableProviders();
-            console.log(colors.muted(`   Found ${viable.length} active provider(s): ${viable.map(v => v.name).join(', ') || 'none'}`));
-        } catch {}
+        // Auto-update disabled per user preference
+        return;
     }
 }
 

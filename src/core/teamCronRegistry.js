@@ -98,13 +98,16 @@ class CronRegistry {
 
     startScheduler() {
         // Simple mock scheduler - runs active crons every 60 seconds
-        setInterval(() => {
+        const timer = setInterval(() => {
             for (const [id, job] of this.jobs.entries()) {
                 if (job.active) {
                     this._runJob(job);
                 }
             }
         }, 60000);
+        if (timer && typeof timer.unref === 'function') {
+            timer.unref();
+        }
     }
 
     async _runJob(job) {

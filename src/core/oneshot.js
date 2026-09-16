@@ -12,7 +12,6 @@ import { providerManager } from './providerManager.js';
  */
 export async function runOneShot(prompt, options = {}) {
     const cwd = options.cwd || process.cwd();
-    await providerManager.checkWeeklyHealth();
     let currentProviderName = options.provider || getProvider();
     let currentProvider = createProvider(currentProviderName);
     

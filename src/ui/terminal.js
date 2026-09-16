@@ -36,7 +36,7 @@ export function printLogo() {
         console.log(chalk.hex(color).bold(logoLines[i]));
     }
     console.log(colors.muted('  Your Own AI Coding Assistant - Private, Local, Yours'));
-    console.log(colors.dim(`  v${process.env.npm_package_version || '3.4.1'}`) + '\n');
+    console.log(colors.dim(`  v${process.env.npm_package_version || '4.0.2'}`) + '\n');
 }
 
 export function printWelcome(provider, model) {

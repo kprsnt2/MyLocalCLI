@@ -2,7 +2,16 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
+import {
+    getProvider,
+    getModel,
+    getApiKey,
+    getBaseUrl,
+    setProvider,
+    setModel,
+    setApiKey
+} from '../config/settings.js';
+import { PROVIDERS } from '../config/providers.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, '..', '..', 'web');
 
@@ -33,11 +42,53 @@ export function startWebServer(options = {}) {
             return;
         }
 
+        // Config API endpoint
+        if (req.url === '/api/config') {
+            if (req.method === 'GET') {
+                const current = getProvider();
+                const providerData = {};
+                for (const [key, p] of Object.entries(PROVIDERS)) {
+                    providerData[key] = {
+                        name: p.name,
+                        endpoint: getBaseUrl(key),
+                        model: getModel(key),
+                        hasKey: !!getApiKey(key)
+                    };
+                }
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    provider: current,
+                    model: getModel(current),
+                    endpoint: getBaseUrl(current),
+                    hasApiKey: !!getApiKey(current),
+                    providers: providerData
+                }));
+                return;
+            }
+
+            if (req.method === 'POST') {
+                let body = '';
+                for await (const chunk of req) body += chunk;
+                try {
+                    const data = JSON.parse(body);
+                    if (data.provider) setProvider(data.provider);
+                    if (data.model) setModel(data.provider || getProvider(), data.model);
+                    if (data.apiKey) setApiKey(data.provider || getProvider(), data.apiKey);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (err) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: err.message }));
+                }
+                return;
+            }
+        }
+
         // Proxy requests
         if (req.url.startsWith('/proxy/')) {
             return handleProxy(req, res);
         }
-
         // Static files
         let filePath = path.join(WEB_DIR, req.url === '/' ? 'index.html' : req.url);
         const ext = path.extname(filePath);
@@ -87,11 +138,30 @@ async function handleProxy(req, res) {
             'Content-Type': 'application/json'
         };
 
-        // Forward Authorization header if present
+        // Forward Authorization header if present, or inject from system settings
         if (req.headers.authorization) {
             headers['Authorization'] = req.headers.authorization;
+        } else {
+            // Auto-inject system API key if available
+            if (targetUrl.includes('openrouter.ai')) {
+                const k = getApiKey('openrouter');
+                if (k) headers['Authorization'] = `Bearer ${k}`;
+            } else if (targetUrl.includes('integrate.api.nvidia.com')) {
+                const k = getApiKey('nvidia');
+                if (k) headers['Authorization'] = `Bearer ${k}`;
+            } else if (targetUrl.includes('api.groq.com')) {
+                const k = getApiKey('groq');
+                if (k) headers['Authorization'] = `Bearer ${k}`;
+            } else if (targetUrl.includes('api.openai.com')) {
+                const k = getApiKey('openai');
+                if (k) headers['Authorization'] = `Bearer ${k}`;
+            }
         }
 
+        if (targetUrl.includes('openrouter.ai')) {
+            headers['HTTP-Referer'] = 'https://mlc.kprsnt.in';
+            headers['X-Title'] = 'MyLocalCLI';
+        }
         // Make proxied request
         const fetchOptions = {
             method: req.method,

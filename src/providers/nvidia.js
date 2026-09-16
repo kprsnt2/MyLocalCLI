@@ -11,85 +11,7 @@ export class NvidiaProvider extends BaseProvider {
         });
     }
 
-    /**
-     * Automatically heal model on deprecation/error code (410, 404, 400).
-     */
-    /**
-     * Automatically heal model on deprecation/error code (410, 404, 403, 400).
-     */
-    async autoHealModel(statusCode, errorText = '') {
-        this.failedModels = this.failedModels || new Set();
-        this.failedModels.add(this.model);
-
-        console.log(`\n⚡ Auto-Heal: Detected error (${statusCode}) for model "${this.model}". Finding active replacement...`);
-        const available = await this.listModels();
-        if (!available || available.length === 0) return null;
-
-        const modelIds = available.map(m => m.id).filter(id => !this.failedModels.has(id));
-        const oldModel = this.model;
-        let replacement = null;
-
-        // 1. High-compatibility proven models on NVIDIA NIM
-        const provenModels = [
-            'meta/llama-3.1-70b-instruct',
-            'meta/llama-3.2-11b-vision-instruct',
-            'mistralai/mistral-7b-instruct-v0.3',
-            'mistralai/mistral-large-2-instruct',
-            'nvidia/llama-3.1-nemotron-70b-instruct',
-            'deepseek-ai/deepseek-coder-6.7b-instruct',
-            'google/gemma-3-12b-it'
-        ];
-        replacement = provenModels.find(id => modelIds.includes(id));
-
-        // 2. Same family match if not yet tried
-        if (!replacement) {
-            const familyPart = oldModel.split('/')[1] ? oldModel.split('/')[1].replace(/[0-9.-]/g, '') : '';
-            if (familyPart) {
-                const familyMatches = modelIds.filter(id => id.includes(familyPart));
-                if (familyMatches.length > 0) {
-                    replacement = familyMatches[0];
-                }
-            }
-        }
-
-        // 3. Any available unblacklisted model
-        if (!replacement && modelIds.length > 0) {
-            replacement = modelIds[0];
-        }
-
-        if (replacement) {
-            console.log(`✅ Auto-Heal Success: Upgraded model from "${oldModel}" to "${replacement}".`);
-            this.model = replacement;
-            try {
-                const { setModel } = await import('../config/settings.js');
-                setModel('nvidia', replacement);
-            } catch {}
-            return replacement;
-        }
-        return null;
-    }
-
-    /**
-     * Weekly proactive check to auto-update models if retired or changed.
-     */
-    async checkWeeklyModelUpdate() {
-        try {
-            const { getSetting, setSetting } = await import('../config/settings.js');
-            const lastCheck = getSetting('last_model_check_nvidia') || 0;
-            const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - lastCheck > oneWeekMs) {
-                setSetting('last_model_check_nvidia', Date.now());
-                const models = await this.listModels();
-                const ids = (models || []).map(m => m.id);
-                if (ids.length > 0 && !ids.includes(this.model)) {
-                    await this.autoHealModel(410, 'Weekly maintenance check: active model deprecated');
-                }
-            }
-        } catch {}
-    }
-
     async chat(messages, options = {}) {
-        await this.checkWeeklyModelUpdate();
         const formattedMessages = this.formatMessages(messages, options.context);
 
         try {
@@ -104,17 +26,11 @@ export class NvidiaProvider extends BaseProvider {
             const data = await response.json();
             return data.choices[0]?.message?.content || '';
         } catch (err) {
-            if (err.message.includes('410') || err.message.includes('404') || err.message.includes('model')) {
-                const healed = await this.autoHealModel(410, err.message);
-                if (healed) {
-                    return this.chat(messages, options);
-                }
-            }
             throw err;
         }
     }
+
     async *stream(messages, options = {}) {
-        await this.checkWeeklyModelUpdate();
         const formattedMessages = this.formatMessages(messages, options.context);
 
         const headers = {
@@ -136,14 +52,6 @@ export class NvidiaProvider extends BaseProvider {
 
         if (!response.ok) {
             const error = await response.text();
-            if (response.status === 410 || response.status === 404 || response.status === 403 || (response.status === 400 && error.toLowerCase().includes('model'))) {
-                const healed = await this.autoHealModel(response.status, error);
-                if (healed) {
-                    // Seamlessly retry with auto-healed model
-                    yield* this.stream(messages, options);
-                    return;
-                }
-            }
             throw new Error(`NVIDIA API Error (${response.status}): ${error}`);
         }
 
@@ -166,12 +74,10 @@ export class NvidiaProvider extends BaseProvider {
 
                     try {
                         const parsed = JSON.parse(data);
-                        const content = parsed.choices?.[0]?.delta?.content;
-                        if (content) {
-                            yield content;
-                        }
-                    } catch {
-                        // Skip invalid JSON
+                        const token = parsed.choices[0]?.delta?.content;
+                        if (token) yield token;
+                    } catch (e) {
+                        // Skip malformed SSE chunks
                     }
                 }
             }
