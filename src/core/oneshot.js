@@ -4,6 +4,7 @@ import { getRelevantContext, formatContextForPrompt } from './context.js';
 import { loadProjectConfig, formatProjectConfigForPrompt } from '../config/project.js';
 import { parseToolCalls, executeTool } from './tools.js';
 import { ToolPermissionContext } from './permissions.js';
+import { providerManager } from './providerManager.js';
 
 /**
  * Execute a single prompt without starting the interactive TUI.
@@ -11,8 +12,9 @@ import { ToolPermissionContext } from './permissions.js';
  */
 export async function runOneShot(prompt, options = {}) {
     const cwd = options.cwd || process.cwd();
-    const providerName = options.provider || getProvider();
-    const provider = createProvider(providerName);
+    await providerManager.checkWeeklyHealth();
+    let currentProviderName = options.provider || getProvider();
+    let currentProvider = createProvider(currentProviderName);
     
     // Process permissions
     const permissionContext = new ToolPermissionContext();
@@ -67,8 +69,18 @@ Outputs must be strictly JSON objects formatted as:
     
     while (loopCount < MAX_LOOPS) {
         let fullResponse = '';
-        for await (const chunk of provider.stream(messages, {})) {
-            fullResponse += chunk;
+        try {
+            for await (const chunk of currentProvider.stream(messages, {})) {
+                fullResponse += chunk;
+            }
+        } catch (err) {
+            const nextProvider = await providerManager.handleProviderFailure(currentProviderName, err.message);
+            if (nextProvider) {
+                currentProviderName = nextProvider;
+                currentProvider = createProvider(nextProvider);
+                continue;
+            }
+            return;
         }
         
         let toolCalls = [];

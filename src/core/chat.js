@@ -12,6 +12,7 @@ import { getRelevantContext, formatContextForPrompt } from './context.js';
 import { TOOLS, executeTool, parseToolCalls } from './tools.js';
 import { executeCommand, loadCustomCommands } from './commands.js';
 import { loadSkills, getSkillContext, findMatchingSkills } from '../skills/skill.js';
+import { EvolutionEngine } from './evolution.js';
 import {
     generateSessionId,
     saveMessage,
@@ -343,6 +344,13 @@ You can help with coding tasks, explain code, debug issues, and more.`;
                 systemContent += '\n\n' + skillContext;
             }
 
+            // Inject learned memory and project invariants (Hermes / self-evolution)
+            const evolution = new EvolutionEngine(cwd);
+            const learnedMemory = await evolution.formatContextForPrompt(trimmedInput);
+            if (learnedMemory) {
+                systemContent += learnedMemory;
+            }
+
             if (enableTools) {
                 systemContent += `
 
@@ -534,67 +542,100 @@ After I execute the tool, I will tell you the result. Then continue with your ne
                 historyLog.add('response', `tokens_out=${outputTokenEstimate} cost=$${cost.toFixed(4)}`);
 
                 // Check for tool calls
+                // Autonomous Auto-Code execution loop (oh-my-pi & Hermes style)
                 if (enableTools) {
-                    const toolCalls = parseToolCalls(fullResponse);
+                    let currentToolCalls = parseToolCalls(fullResponse);
+                    let autoTurn = 0;
+                    const maxAutoTurns = 25;
 
-                    const toolResults = await Promise.all(toolCalls.map(async (toolCall) => {
-                        if (!permissionContext.allows(toolCall.name)) {
-                            printWarning(`🚫 Tool "${toolCall.name}" blocked by permission policy`);
-                            streamEmitter.emitPermissionDenial(toolCall.name, 'denied by permission context');
-                            historyLog.add('permission_denial', toolCall.name);
-                            return { name: toolCall.name, success: false, error: 'blocked by permissions' };
+                    while (currentToolCalls && currentToolCalls.length > 0 && autoTurn < maxAutoTurns) {
+                        autoTurn++;
+                        printInfo(`⚡ AutoCode autonomous step [${autoTurn}/${maxAutoTurns}]...`);
+
+                        const toolResults = [];
+                        for (const toolCall of currentToolCalls) {
+                            if (!permissionContext.allows(toolCall.name)) {
+                                printWarning(`🚫 Tool "${toolCall.name}" blocked by permission policy`);
+                                streamEmitter.emitPermissionDenial(toolCall.name, 'denied by permission context');
+                                historyLog.add('permission_denial', toolCall.name);
+                                toolResults.push({ name: toolCall.name, success: false, error: 'blocked by permissions' });
+                                continue;
+                            }
+
+                            const currentMode = getAgentMode();
+                            if (!isToolAllowed(toolCall.name)) {
+                                printWarning(`🚫 Tool "${toolCall.name}" blocked - ${currentMode.displayName} mode is read-only`);
+                                streamEmitter.emitPermissionDenial(toolCall.name, 'mode restriction');
+                                toolResults.push({ name: toolCall.name, success: false, error: 'blocked by Read-Only PLAN mode' });
+                                continue;
+                            }
+
+                            streamEmitter.emitToolUse(toolCall.name, toolCall.arguments);
+                            const tSpinner = toolSpinner(toolCall.name, toolCall.name);
+                            tSpinner.start();
+
+                            let result;
+                            try {
+                                result = await executeTool(toolCall.name, toolCall.arguments, cwd, { autoApprove: true });
+                            } catch (e) {
+                                result = { success: false, error: e.message };
+                            }
+
+                            if (result.success) {
+                                tSpinner.succeed(`${toolCall.name} done`);
+                            } else {
+                                tSpinner.fail(`${toolCall.name} failed`);
+                            }
+
+                            streamEmitter.emitToolResult(toolCall.name, result);
+                            registry.registerTool(toolCall.name, 'chat');
+                            registry.recordToolExecution(toolCall.name, result);
+                            historyLog.add('tool_exec', `${toolCall.name} success=${result.success}`);
+                            toolResults.push({ name: toolCall.name, ...result });
                         }
 
-                        const currentMode = getAgentMode();
-                        if (!isToolAllowed(toolCall.name)) {
-                            printWarning(`🚫 Tool "${toolCall.name}" blocked - ${currentMode.displayName} mode is read-only`);
-                            streamEmitter.emitPermissionDenial(toolCall.name, 'mode restriction');
-                            return { name: toolCall.name, success: false, error: 'blocked by Read-Only PLAN mode' };
-                        }
-
-                        streamEmitter.emitToolUse(toolCall.name, toolCall.arguments);
-                        const tSpinner = toolSpinner(toolCall.name, toolCall.name);
-                        tSpinner.start();
-                        
-                        const result = await executeTool(toolCall.name, toolCall.arguments, cwd);
-                        
-                        if (result.success) {
-                            tSpinner.succeed(`${toolCall.name} done`);
-                        } else {
-                            tSpinner.fail(`${toolCall.name} failed`);
-                        }
-
-                        streamEmitter.emitToolResult(toolCall.name, result);
-                        registry.registerTool(toolCall.name, 'chat');
-                        registry.recordToolExecution(toolCall.name, result);
-                        historyLog.add('tool_exec', `${toolCall.name} success=${result.success}`);
-                        
-                        return { name: toolCall.name, ...result };
-                    }));
-
-                    if (toolResults.length > 0) {
                         let combinedToolContent = '';
                         for (const result of toolResults) {
                             if (result.success && result.content) {
-                                combinedToolContent += `[Tool Result: ${result.name}]\n${result.content.slice(0, 3000)}\n\n`;
+                                combinedToolContent += `[Tool Result: ${result.name}]\n${String(result.content).slice(0, 6000)}\n\n`;
                             } else if (!result.success) {
-                                combinedToolContent += `[Tool Failed: ${result.name}]\n${result.error}\n\n`;
+                                combinedToolContent += `[Tool Failed: ${result.name}]\n${result.error || 'Failed'}\nHint: Inspect the error, adjust parameters or fix code, and continue.\n\n`;
                             }
                         }
-                        if (combinedToolContent) {
-                            // Don't push fullResponse duplicate if it's already there
-                            if (messages[messages.length - 1]?.content !== fullResponse) {
-                                messages.push({ role: 'assistant', content: fullResponse });
-                            }
-                            messages.push({ role: 'user', content: combinedToolContent });
+
+                        // Push conversation steps
+                        messages.push({ role: 'assistant', content: fullResponse });
+                        await saveMessage(sessionId, { role: 'assistant', content: fullResponse });
+                        transcript.append({ role: 'assistant', content: fullResponse });
+
+                        messages.push({ role: 'user', content: combinedToolContent });
+                        await saveMessage(sessionId, { role: 'user', content: combinedToolContent });
+
+                        // Stream next autonomous step from provider
+                        printAssistantStart();
+                        fullResponse = '';
+                        const nextMessages = [
+                            { role: 'system', content: systemContent },
+                            ...messages
+                        ];
+
+                        for await (const chunk of provider.stream(nextMessages, {})) {
+                            printAssistantChunk(chunk);
+                            fullResponse += chunk;
                         }
+                        printAssistantEnd();
+
+                        // Check if model called another tool in this step
+                        currentToolCalls = parseToolCalls(fullResponse);
                     }
                 }
 
-                // Save assistant message
-                messages.push({ role: 'assistant', content: fullResponse });
-                await saveMessage(sessionId, { role: 'assistant', content: fullResponse });
-                transcript.append({ role: 'assistant', content: fullResponse });
+                // Save final assistant message if not already saved
+                if (messages[messages.length - 1]?.content !== fullResponse) {
+                    messages.push({ role: 'assistant', content: fullResponse });
+                    await saveMessage(sessionId, { role: 'assistant', content: fullResponse });
+                    transcript.append({ role: 'assistant', content: fullResponse });
+                }
                 streamEmitter.emitMessageStop(costTracker.summary, 'completed');
 
             } catch (error) {

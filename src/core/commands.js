@@ -343,6 +343,42 @@ registerCommand({
     }
 });
 
+// /auto - Autonomous AutoCode Engine status
+registerCommand({
+    name: 'auto',
+    aliases: ['autocode'],
+    description: 'Autonomous multi-turn AutoCode engine status',
+    handler: async () => {
+        printSuccess('⚡ AutoCode Engine: ACTIVE (Multi-turn autonomous execution, self-correction, up to 25 turns/goal)');
+    }
+});
+
+// /memory - View self-evolved project memory
+registerCommand({
+    name: 'memory',
+    aliases: ['evolve', 'learned'],
+    description: 'View self-evolved project memory and learned invariants',
+    handler: async (args, raw, ctx) => {
+        const { EvolutionEngine } = await import('./evolution.js');
+        const evo = new EvolutionEngine(ctx?.cwd || process.cwd());
+        const mem = await evo.loadMemory();
+        console.log('\n' + colors.primary('━━━ 🧠 Self-Evolving Project Memory (Hermes/oh-my-pi) ━━━') + '\n');
+        if (mem.invariants.length === 0 && mem.lessonsLearned.length === 0) {
+            console.log(colors.muted('  No learned rules yet. The AI automatically records rules with reflect_memory/learn_skill!'));
+        } else {
+            if (mem.invariants.length > 0) {
+                console.log(colors.secondary('  Learned Invariants:'));
+                mem.invariants.forEach((inv, i) => console.log(`    ${i + 1}. [${inv.category}] ${inv.rule}`));
+            }
+            if (mem.lessonsLearned.length > 0) {
+                console.log(colors.secondary('\n  Lessons Learned from Mistakes:'));
+                mem.lessonsLearned.forEach((l, i) => console.log(`    ${i + 1}. Mistake: ${l.mistake} -> Fix: ${l.solution}`));
+            }
+        }
+        console.log();
+    }
+});
+
 // /exit - Exit the chat
 registerCommand({
     name: 'exit',

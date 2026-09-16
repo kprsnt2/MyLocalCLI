@@ -21,7 +21,7 @@ const marked = new Marked(
         del: chalk.strikethrough,
         link: chalk.hex('#3B82F6').underline,
         href: chalk.hex('#3B82F6').underline,
-        reflowText: true,
+        reflowText: false, // Critical: Disables naive wrapping that breaks Indic/Telugu/CJK graphemes
         showSectionPrefix: false,
         tab: 2
     })

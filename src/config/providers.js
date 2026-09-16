@@ -67,6 +67,6 @@ export const DEFAULT_MODELS = {
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
   openai: 'gpt-4o-mini',
   groq: 'llama-3.3-70b-versatile',
-  nvidia: 'z-ai/glm5',
+  nvidia: 'z-ai/glm-5.3-flash',
   custom: 'default'
 };

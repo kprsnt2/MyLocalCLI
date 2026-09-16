@@ -11,6 +11,7 @@ import { teamRegistry, cronRegistry } from './teamCronRegistry.js';
 import { mcpRegistry } from './mcpToolBridge.js';
 import { lspClient } from './lspClient.js';
 import { loadSkills, activeSkills } from './skillsPlugin.js';
+import { EvolutionEngine } from './evolution.js';
 // Enhanced tool definitions for AI agents - Claude Code style
 export const TOOLS = [
     {
@@ -697,6 +698,93 @@ export const TOOLS = [
             name: 'LspGetSymbols',
             description: 'Get LSP symbols.',
             parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }
+        }
+    }
+    ,
+    {
+        type: 'function',
+        function: {
+            name: 'surgical_edit',
+            description: 'Surgical line-anchored file editing (oh-my-pi style). Replace, insert, or delete exact line ranges without string mismatch.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Path to the file' },
+                    start_line: { type: 'number', description: '1-indexed starting line number' },
+                    end_line: { type: 'number', description: '1-indexed ending line number (inclusive)' },
+                    new_content: { type: 'string', description: 'Replacement content' },
+                    operation: { type: 'string', enum: ['replace', 'insert_before', 'insert_after', 'delete'], description: 'Edit operation (default: replace)' }
+                },
+                required: ['path', 'start_line']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'smart_read',
+            description: 'Smart file reading with inline line selectors (e.g. "src/main.js:10-50", "file.rs:-30", "file.py:100+"). Returns numbered lines.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'File path, optionally with inline selector (e.g. "src/index.js:20-60")' },
+                    offset: { type: 'number', description: 'Optional starting line' },
+                    limit: { type: 'number', description: 'Optional line count' }
+                },
+                required: ['path']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'learn_skill',
+            description: 'Synthesize a new reusable skill or pattern (Hermes self-learning). Saves into project skills for automatic future recall.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name: { type: 'string', description: 'Name of the skill (e.g. "rust-docker-build")' },
+                    description: { type: 'string', description: 'What this skill does' },
+                    instructions: { type: 'string', description: 'Detailed step-by-step instructions or code pattern' },
+                    triggers: { type: 'array', items: { type: 'string' }, description: 'Keywords that trigger this skill' }
+                },
+                required: ['name', 'description', 'instructions']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'reflect_memory',
+            description: 'Record an invariant, lesson learned, or bug fix reflection to persistent project memory (evolving CLI capability).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    mistake: { type: 'string', description: 'What went wrong or failed' },
+                    cause: { type: 'string', description: 'Root cause of the issue' },
+                    solution: { type: 'string', description: 'How it was fixed' },
+                    rule: { type: 'string', description: 'Permanent rule/invariant to follow in this codebase' }
+                },
+                required: ['mistake', 'solution']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'phased_todo',
+            description: 'Structured phased todo list manager (oh-my-pi style) for tracking complex multi-step tasks.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    op: { type: 'string', enum: ['init', 'start', 'done', 'block', 'unblock', 'view'], description: 'Operation to perform' },
+                    list: { type: 'array', description: 'Phased task list for init: [{ phase: "Foundation", items: ["task 1"] }]' },
+                    task: { type: 'string', description: 'Task content string to mark start/done/block' },
+                    phase: { type: 'string', description: 'Phase name' },
+                    reason: { type: 'string', description: 'Block reason' }
+                },
+                required: ['op']
+            }
         }
     }
 ];
@@ -1689,6 +1777,191 @@ export async function executeTool(toolName, args, cwd, options = {}) {
                 const res = await lspClient.getSymbols(args.query);
                 return { success: true, content: JSON.stringify(res, null, 2) };
             } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'surgical_edit': {
+            try {
+                const filePath = resolvePath(args.path);
+                const raw = await fs.readFile(filePath, 'utf-8');
+                const lines = raw.split(/\r?\n/);
+                const start = Math.max(1, parseInt(args.start_line, 10));
+                const end = args.end_line ? Math.min(lines.length, parseInt(args.end_line, 10)) : start;
+                const op = args.operation || 'replace';
+                const newLines = (args.new_content !== undefined && args.new_content !== null)
+                    ? args.new_content.split(/\r?\n/)
+                    : [];
+
+                if (start > lines.length + 1) {
+                    return { success: false, error: `start_line ${start} exceeds total lines (${lines.length})` };
+                }
+
+                if (op === 'replace') {
+                    lines.splice(start - 1, Math.max(0, end - start + 1), ...newLines);
+                } else if (op === 'insert_before') {
+                    lines.splice(start - 1, 0, ...newLines);
+                } else if (op === 'insert_after') {
+                    lines.splice(start, 0, ...newLines);
+                } else if (op === 'delete') {
+                    lines.splice(start - 1, Math.max(0, end - start + 1));
+                }
+
+                await fs.writeFile(filePath, lines.join('\n'), 'utf-8');
+                printSuccess(`✂️ Surgical edit: ${args.path} [${op}] lines ${start}-${end}`);
+                return {
+                    success: true,
+                    content: `Successfully modified ${args.path}: operation=${op}, lines ${start}-${end}, new line count=${lines.length}`
+                };
+            } catch (err) {
+                return { success: false, error: `surgical_edit error: ${err.message}` };
+            }
+        }
+
+        case 'smart_read': {
+            try {
+                let rawPath = args.path.trim();
+                let start = args.offset ? parseInt(args.offset, 10) : 1;
+                let limit = args.limit ? parseInt(args.limit, 10) : null;
+
+                // Parse selector like "foo.js:10-50" or "foo.js:10+20" or "foo.js:-30"
+                const selectorMatch = rawPath.match(/^(.*?):(?:(\d+)-(\d+)|(\d+)\+(\d+)|-(\d+)|(\d+))$/);
+                if (selectorMatch) {
+                    rawPath = selectorMatch[1];
+                    if (selectorMatch[2] && selectorMatch[3]) {
+                        start = parseInt(selectorMatch[2], 10);
+                        limit = parseInt(selectorMatch[3], 10) - start + 1;
+                    } else if (selectorMatch[4] && selectorMatch[5]) {
+                        start = parseInt(selectorMatch[4], 10);
+                        limit = parseInt(selectorMatch[5], 10);
+                    } else if (selectorMatch[6]) {
+                        // Last N lines
+                        start = -parseInt(selectorMatch[6], 10);
+                    } else if (selectorMatch[7]) {
+                        start = parseInt(selectorMatch[7], 10);
+                    }
+                }
+
+                const filePath = resolvePath(rawPath);
+                const content = await fs.readFile(filePath, 'utf-8');
+                const lines = content.split(/\r?\n/);
+                const total = lines.length;
+
+                let startIndex = start < 0 ? Math.max(0, total + start) : Math.max(0, start - 1);
+                let endIndex = limit ? Math.min(total, startIndex + limit) : total;
+                const selected = lines.slice(startIndex, endIndex);
+
+                const numbered = selected.map((line, idx) => `${startIndex + idx + 1}:${line}`).join('\n');
+                printInfo(`📖 Smart read: ${rawPath} (${startIndex + 1}-${endIndex}/${total} lines)`);
+                return {
+                    success: true,
+                    content: `[${rawPath} lines ${startIndex + 1}-${endIndex} of ${total}]\n${numbered}`
+                };
+            } catch (err) {
+                return { success: false, error: `smart_read error: ${err.message}` };
+            }
+        }
+
+        case 'learn_skill': {
+            try {
+                const evo = new EvolutionEngine(cwd);
+                const result = await evo.learnSkill({
+                    name: args.name,
+                    description: args.description,
+                    instructions: args.instructions,
+                    triggers: args.triggers || []
+                });
+                printSuccess(`🧠 Synthesized new skill: "${result.name}"`);
+                return {
+                    success: true,
+                    content: `Skill "${result.name}" recorded at ${result.path}. It will be automatically recalled on matching tasks.`
+                };
+            } catch (err) {
+                return { success: false, error: `learn_skill failed: ${err.message}` };
+            }
+        }
+
+        case 'reflect_memory': {
+            try {
+                const evo = new EvolutionEngine(cwd);
+                await evo.recordReflection({
+                    mistake: args.mistake,
+                    cause: args.cause || '',
+                    solution: args.solution,
+                    rule: args.rule || ''
+                });
+                printSuccess(`🛡️ Memory updated: Learned from mistake`);
+                return {
+                    success: true,
+                    content: `Reflection saved. Permanent rule: "${args.rule || args.solution}" added to project memory.`
+                };
+            } catch (err) {
+                return { success: false, error: `reflect_memory failed: ${err.message}` };
+            }
+        }
+
+        case 'phased_todo': {
+            try {
+                const todoFile = path.join(cwd, '.mlc', 'todo.json');
+                await fs.mkdir(path.join(cwd, '.mlc'), { recursive: true });
+                let state = { phases: [], activePhase: null };
+                try {
+                    state = JSON.parse(await fs.readFile(todoFile, 'utf-8'));
+                } catch {}
+
+                const op = args.op;
+                if (op === 'init') {
+                    if (Array.isArray(args.list)) {
+                        state.phases = args.list.map(p => ({
+                            phase: p.phase || 'General',
+                            items: (p.items || []).map(text => ({ text, status: 'pending' }))
+                        }));
+                        if (state.phases.length > 0 && state.phases[0].items.length > 0) {
+                            state.phases[0].items[0].status = 'in_progress';
+                            state.activePhase = state.phases[0].phase;
+                        }
+                    }
+                } else if (op === 'start' && args.task) {
+                    for (const p of state.phases) {
+                        for (const item of p.items) {
+                            if (item.text === args.task) item.status = 'in_progress';
+                            else if (item.status === 'in_progress') item.status = 'pending';
+                        }
+                    }
+                } else if (op === 'done') {
+                    for (const p of state.phases) {
+                        for (const item of p.items) {
+                            if (item.text === args.task || p.phase === args.phase) item.status = 'completed';
+                        }
+                    }
+                    // Auto-promote next pending task
+                    let foundActive = false;
+                    for (const p of state.phases) {
+                        for (const item of p.items) {
+                            if (item.status === 'in_progress') { foundActive = true; break; }
+                        }
+                    }
+                    if (!foundActive) {
+                        for (const p of state.phases) {
+                            const next = p.items.find(i => i.status === 'pending');
+                            if (next) { next.status = 'in_progress'; state.activePhase = p.phase; break; }
+                        }
+                    }
+                }
+
+                await fs.writeFile(todoFile, JSON.stringify(state, null, 2), 'utf-8');
+
+                // Format output
+                let display = '### 📋 Phased Task Board\n';
+                for (const p of state.phases) {
+                    display += `\n**Phase: ${p.phase}**\n`;
+                    for (const item of p.items) {
+                        const icon = item.status === 'completed' ? '✅' : item.status === 'in_progress' ? '🔄' : '⏳';
+                        display += `- ${icon} [${item.status}] ${item.text}\n`;
+                    }
+                }
+                return { success: true, content: display };
+            } catch (err) {
+                return { success: false, error: `phased_todo error: ${err.message}` };
+            }
         }
 
         default:
