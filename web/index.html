@@ -613,6 +613,7 @@
       <select class="provider-select" id="provider-select" onchange="changeProvider(this.value)">
         <option value="ollama">🦙 Ollama (100% Free)</option>
         <option value="lmstudio">🏠 LM Studio (100% Free)</option>
+        <option value="gemini">🔵 Google Gemini (gemini-flash-latest)</option>
         <option value="openrouter">🌐 OpenRouter (Free Tier)</option>
         <option value="groq">⚡ Groq (Free Tier)</option>
         <option value="nvidia">🟢 NVIDIA NIM</option>
@@ -672,6 +673,7 @@
       <div class="presets">
         <span class="preset-pill" onclick="applyPreset('ollama')">Ollama (Free)</span>
         <span class="preset-pill" onclick="applyPreset('lmstudio')">LM Studio (Free)</span>
+        <span class="preset-pill" onclick="applyPreset('gemini')">Gemini (Flash Latest)</span>
         <span class="preset-pill" onclick="applyPreset('openrouter_free')">OpenRouter (Free)</span>
         <span class="preset-pill" onclick="applyPreset('groq')">Groq (Free)</span>
       </div>
@@ -716,10 +718,15 @@
         local: true,
         defaults: ['qwen2.5-coder-7b-instruct', 'deepseek-r1-distill-qwen-7b']
       },
+      gemini: {
+        endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-flash-latest',
+        defaults: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest']
+      },
       openrouter: {
         endpoint: 'https://openrouter.ai/api/v1',
         model: 'deepseek/deepseek-r1:free',
-        defaults: ['deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-exp:free']
+        defaults: ['deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-latest']
       },
       groq: {
         endpoint: 'https://api.groq.com/openai/v1',
@@ -908,10 +915,11 @@
       const provider = PROVIDERS[currentProvider] || PROVIDERS.ollama;
 
       // Check if provider requires an API key but none is available
-      const cloudProviders = ['openrouter', 'groq', 'nvidia', 'openai'];
+      const cloudProviders = ['gemini', 'openrouter', 'groq', 'nvidia', 'openai'];
       const hasServerKey = serverConfig?.providers?.[currentProvider]?.hasKey;
       if (cloudProviders.includes(currentProvider) && !apiKey && !hasServerKey) {
         const keyLinks = {
+          gemini: 'aistudio.google.com',
           openrouter: 'openrouter.ai',
           groq: 'console.groq.com',
           nvidia: 'build.nvidia.com',
@@ -1134,6 +1142,9 @@
       } else if (key === 'lmstudio') {
         document.getElementById('settings-endpoint').value = 'http://localhost:1234/v1';
         document.getElementById('settings-model').value = 'qwen2.5-coder-7b-instruct';
+      } else if (key === 'gemini') {
+        document.getElementById('settings-endpoint').value = 'https://generativelanguage.googleapis.com/v1beta/openai';
+        document.getElementById('settings-model').value = 'gemini-flash-latest';
       } else if (key === 'openrouter_free') {
         document.getElementById('settings-endpoint').value = 'https://openrouter.ai/api/v1';
         document.getElementById('settings-model').value = 'deepseek/deepseek-r1:free';

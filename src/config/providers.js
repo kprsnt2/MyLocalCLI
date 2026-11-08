@@ -29,6 +29,13 @@ export const PROVIDERS = {
       'qwen/qwen-2-7b-instruct:free'
     ]
   },
+  gemini: {
+    name: 'Google Gemini',
+    description: 'Google Gemini API (OpenAI-compatible)',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    requiresApiKey: true,
+    icon: '🔵'
+  },
   openai: {
     name: 'OpenAI',
     description: 'OpenAI API',
@@ -64,6 +71,7 @@ export const DEFAULT_PROVIDER = 'lmstudio';
 export const DEFAULT_MODELS = {
   lmstudio: 'local-model',
   ollama: 'llama3.2',
+  gemini: 'gemini-flash-latest',
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
   openai: 'gpt-4o-mini',
   groq: 'llama-3.3-70b-versatile',
