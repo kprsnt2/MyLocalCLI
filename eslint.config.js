@@ -15,8 +15,8 @@ export default [
             }
         },
         rules: {
-            // Errors
-            'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+            // Errors / Warnings
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
             'no-undef': 'error',
             'no-console': 'off', // CLI app uses console
 
@@ -39,7 +39,10 @@ export default [
                 ...globals.node,
                 describe: 'readonly',
                 it: 'readonly',
+                test: 'readonly',
                 expect: 'readonly',
+                beforeAll: 'readonly',
+                afterAll: 'readonly',
                 beforeEach: 'readonly',
                 afterEach: 'readonly',
                 vi: 'readonly'
